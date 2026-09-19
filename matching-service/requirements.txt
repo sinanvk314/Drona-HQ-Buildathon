@@ -3,7 +3,7 @@ uvicorn==0.53.0
 psycopg==3.3.6
 psycopg-binary==3.3.6
 pgvector==0.5.0
-openai==3.16.2
+fastembed==0.8.0
 pydantic==2.13.5
 python-dotenv==1.2.2
 numpy==2.4.4

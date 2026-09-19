@@ -33,7 +33,7 @@ result attached to the prospect's Dossier.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env    # fill in DATABASE_URL and OPENAI_API_KEY
+cp .env.example .env    # fill in DATABASE_URL; embeddings need no API key
 ```
 
 Run the pgvector schema against the same Neon database the rest of the
@@ -66,7 +66,7 @@ These prove the *plumbing* is correct — sorting, thresholds, the "no
 confident match" and "ambiguous stays non-deterministic" cases — without
 needing `OPENAI_API_KEY` or `DATABASE_URL` set at all.
 
-**Tier 2 — once you have a real OpenAI key and Neon connection:**
+**Tier 2 — once you have a Neon connection (no API key needed):**
 
 ```bash
 curl -X POST http://localhost:8000/match/contact \
@@ -82,7 +82,9 @@ curl -X POST http://localhost:8000/match/contact \
 
 should return `c1` with a high score. This is the point to sanity-check
 that *real* embeddings separate genuinely similar and dissimilar text —
-the mock embedder intentionally can't prove that, only real API calls can.
+the mock embedder intentionally can't prove that, only real embedding calls
+can. The first real call downloads the model (~130MB) from huggingface.co;
+after that it's cached and runs fully offline.
 
 `/triage/rank-companies` additionally needs rows in `candidate_companies`
 and a real `campaigns` row to read ICP fields from — wire this up once
@@ -113,7 +115,7 @@ re-tune. Starting values here are reasonable defaults, not calibrated ones.
 app/
   main.py                    FastAPI routes
   config.py                  every tunable threshold, env-driven
-  embeddings.py               OpenAI wrapper + mock embedder for testing
+  embeddings.py               local fastembed wrapper + mock embedder for testing
   similarity.py               pure cosine-similarity math (no deps beyond numpy)
   db.py                       Postgres/pgvector queries
   schemas.py                  request/response models

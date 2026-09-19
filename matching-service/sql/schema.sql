@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS candidate_companies (
     employee_count  INTEGER,
     description     TEXT,
     raw_data        JSONB,                -- full payload from Apollo/whatever source
-    embedding       vector(1536),         -- filled in lazily by triage.py on first run
+    embedding       vector(384),          -- filled in lazily by triage.py on first run (fastembed bge-small)
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -26,6 +26,11 @@ CREATE INDEX IF NOT EXISTS candidate_companies_embedding_idx
 
 CREATE INDEX IF NOT EXISTS candidate_companies_campaign_idx
     ON candidate_companies (campaign_id);
+
+-- If candidate_companies was already created against the old OpenAI
+-- dimension (1536), migrate it before running triage against fastembed:
+--   ALTER TABLE candidate_companies ALTER COLUMN embedding TYPE vector(384);
+--   UPDATE candidate_companies SET embedding = NULL;  -- old vectors are the wrong dimension AND wrong model, must re-embed
 
 -- Minimal columns this service reads off Dev 1's campaigns table.
 -- Included here as documentation of the contract, NOT to be run if
