@@ -1,0 +1,20 @@
+{
+  "name": "autonomous-sdr-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend for the Autonomous SDR Control Plane (Inter Guild Buildathon 2026). Implements the campaign/prospect/decision/approval/agent/settings API consumed by src/services/api.js in the frontend, plus the agent orchestration, RAG and conflict-resolution logic behind it.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "reset-data": "node -e \"import('./src/db/index.js').then(m => m.resetState()).then(() => { console.log('State reset to seed.'); process.exit(0); })\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.13.1"
+  }
+}
