@@ -27,8 +27,21 @@ def classify_reply(reply_text: str, categories: dict[str, list[str]]) -> dict:
     ranked = rank_by_similarity(reply_vec, category_vecs)
     best_category, best_score = ranked[0]
 
+    # Margin over the runner-up catches replies that sit between two
+    # categories, which an absolute score alone can't (e.g. "please stop
+    # calling my assistant and email me" scores 0.817 as hostile but only
+    # 0.008 ahead of unsubscribe). With a single category there is no
+    # runner-up, so the margin check is vacuous.
+    margin = best_score - ranked[1][1] if len(ranked) > 1 else 1.0
+
     deterministic = (
         best_score >= config.REPLY_HIGH_CONFIDENCE_SCORE
+        and margin >= config.REPLY_MIN_MARGIN
         and best_category in config.DETERMINISTIC_CATEGORIES
     )
-    return {"category": best_category, "score": best_score, "deterministic": deterministic}
+    return {
+        "category": best_category,
+        "score": best_score,
+        "margin": margin,
+        "deterministic": deterministic,
+    }

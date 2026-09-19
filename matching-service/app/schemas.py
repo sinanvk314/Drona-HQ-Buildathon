@@ -32,4 +32,5 @@ class ReplyClassifyRequest(BaseModel):
 class ReplyClassifyResult(BaseModel):
     category: str
     score: float
+    margin: float  # lead over the runner-up category; 1.0 if only one category
     deterministic: bool
