@@ -8,6 +8,7 @@ schema. Adjust column names below if Dev 1's actual campaigns table
 differs from what's assumed here.
 """
 import psycopg
+from pgvector import Vector
 from pgvector.psycopg import register_vector
 
 from . import config
@@ -62,7 +63,7 @@ def store_embedding(conn, company_id: int, embedding: list[float]):
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE candidate_companies SET embedding = %s WHERE id = %s",
-            (embedding, company_id),
+            (Vector(embedding), company_id),
         )
 
 
@@ -73,6 +74,7 @@ def rank_companies_pgvector(conn, campaign_id, query_embedding: list[float], top
     ranking is only for small sets (one company's contacts, a handful of
     reply-category examples).
     """
+    vec = Vector(query_embedding)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -83,6 +85,6 @@ def rank_companies_pgvector(conn, campaign_id, query_embedding: list[float], top
             ORDER BY embedding <=> %s
             LIMIT %s
             """,
-            (query_embedding, campaign_id, campaign_id, query_embedding, top_n),
+            (vec, campaign_id, campaign_id, vec, top_n),
         )
         return cur.fetchall()
