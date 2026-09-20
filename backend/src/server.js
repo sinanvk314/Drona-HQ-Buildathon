@@ -11,6 +11,7 @@ import { initDb } from "./db/index.js";
 import { getUsage } from "./services/usage.js";
 import { embeddingsStatus } from "./services/embeddings.js";
 import { authMiddleware } from "./services/auth.js";
+import { webhooks } from "./routes/webhooks.js";
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.get("/health", (req, res) =>
   })
 );
 
+app.use("/webhooks", webhooks); // Twilio: not behind sign-in, verified by Twilio's signature instead
 app.use("/api", authMiddleware, router);
 
 // One-service deployment: if the frontend has been built (frontend/dist), serve it from here, with the
@@ -46,7 +48,7 @@ app.use("/api", authMiddleware, router);
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "frontend", "dist");
 if (fs.existsSync(path.join(UI_DIR, "index.html"))) {
   app.use(express.static(UI_DIR));
-  app.get(/^\/(?!api\/|health).*/, (req, res) => res.sendFile(path.join(UI_DIR, "index.html")));
+  app.get(/^\/(?!api\/|health|webhooks\/).*/, (req, res) => res.sendFile(path.join(UI_DIR, "index.html")));
 }
 
 app.use(notFound);

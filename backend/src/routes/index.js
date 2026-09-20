@@ -8,6 +8,7 @@ import { authConfig, login, me } from "../services/auth.js";
 import * as dev from "../services/dev.js";
 import { getPerformance } from "../services/performance.js";
 import * as knowledge from "../services/knowledge.js";
+import * as contacts from "../services/contacts.js";
 
 export const router = Router();
 
@@ -53,6 +54,9 @@ router.post("/knowledge", asyncRoute(async (req, res) => res.json(knowledge.addK
 router.post("/knowledge/attach", asyncRoute(async (req, res) => res.json(knowledge.attachKnowledge(req.body || {}))));
 router.post("/knowledge/detach", asyncRoute(async (req, res) => res.json(knowledge.detachKnowledge((req.body || {}).campaignId, (req.body || {}).sourceId))));
 router.post("/knowledge/test", asyncRoute(async (req, res) => res.json(await knowledge.testRetrieval(req.body || {}))));
+router.get("/contacts", asyncRoute(async (req, res) => res.json(contacts.listContacts())));
+router.post("/contacts", asyncRoute(async (req, res) => res.json(await contacts.addContact(req.body || {}))));
+router.delete("/contacts/:id", asyncRoute(async (req, res) => res.json(await contacts.removeContact(req.params.id))));
 router.get("/performance", asyncRoute(async (req, res) => res.json(getPerformance())));
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
 

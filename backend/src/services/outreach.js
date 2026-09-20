@@ -3,6 +3,7 @@
 // follow-up clock can never disagree.
 import { hoursToMs } from "./simTime.js";
 import { pickRep } from "./reps.js";
+import { dispatch } from "./channels/dispatch.js";
 
 const CHANNEL_LABEL = { email: "Email", linkedin: "LinkedIn", sms: "SMS", voice: "Voice" };
 export const channelLabel = (key) => CHANNEL_LABEL[key] || key;
@@ -22,8 +23,11 @@ export function recordTouch(state, campaign, prospect, { channel, kind, subject 
   // A human-approved message is sent even if the rep is over a limit, so fall back to any active assigned rep.
   const rep = pickRep(state, campaign, channel, { now: ts, preferId: prospect.repId }) || pickRep(state, campaign, channel, { now: ts, preferId: prospect.repId, strict: false });
   if (rep) prospect.repId = rep.id;
-  prospect.touches.push({ n, channel, kind, subject, ts, repId: rep ? rep.id : null, repName: rep ? rep.name : null });
-  prospect.conversation.push({ dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined });
+  const touch = { n, channel, kind, subject, ts, repId: rep ? rep.id : null, repName: rep ? rep.name : null };
+  const entry = { dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined };
+  prospect.touches.push(touch);
+  prospect.conversation.push(entry);
+  dispatch(state, campaign, prospect, { channel, subject, body, rep, kind }, [touch, entry]); // real campaigns only: this is what actually sends
   prospect.history.push({
     kind: channel === "email" ? "email" : "chat",
     text: kind === "first" ? `Opening ${channel} sent — "${subject}"` : `Follow-up ${n - 1} sent on ${channel}`,
@@ -54,7 +58,9 @@ export function recordTouch(state, campaign, prospect, { channel, kind, subject 
 export function recordReply(state, campaign, prospect, { channel, body }) {
   const rep = pickRep(state, campaign, channel, { preferId: prospect.repId }) || pickRep(state, campaign, channel, { preferId: prospect.repId, strict: false });
   if (rep) prospect.repId = rep.id;
-  prospect.conversation.push({ dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined });
+  const entry = { dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined };
+  prospect.conversation.push(entry);
+  dispatch(state, campaign, prospect, { channel, subject: "", body, rep, kind: "reply" }, [entry]); // real campaigns only
   prospect.history.push({ kind: channel === "email" ? "email" : "chat", text: `Reply sent on ${channel}`, when: "Today" });
   campaign.outreach.followups += 1;
   prospect.lastAction = `Replied on ${channel}, {ago}`;

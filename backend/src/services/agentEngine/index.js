@@ -223,3 +223,15 @@ export async function resolveMeetingReply({ campaign, prospect, slots, replyText
 export function enrich({ prospect }) {
   return rule.ruleEnrich({ prospect }); // enrichment stays rule-based: it's data lookup, not judgment
 }
+
+/** One turn of a phone call: what to say next, and whether the call is over and how it went. */
+export async function voiceTurn({ campaign, prospect, transcript, voiceAgent }) {
+  const { text, harness } = voiceAgent ? activePromptFor(voiceAgent, campaign) : { text: "", harness: "n/a" };
+  const result = await withFallback(
+    null,
+    () => rule.ruleVoiceTurn({ campaign, prospect, transcript }),
+    null,
+    () => gemini.geminiVoiceTurn({ campaign, prospect, transcript, promptText: text })
+  );
+  return { ...result, harness };
+}

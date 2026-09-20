@@ -22,6 +22,10 @@ import { hoursToMs } from "./simTime.js";
 import { addFact, addNote, ensureDossier } from "./dossier.js";
 import { SDR_STEPS } from "./sdrSteps.js";
 import { shortDate } from "../utils/format.js";
+import { isRealCampaign, realChannels, channelBlocker } from "./realMode.js";
+import { rankContacts, pickContacts } from "./contacts.js";
+import { newReplies } from "./channels/gmail.js";
+import { gmailReady } from "./realMode.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
 // An agent runs in a campaign only when it is enabled for the whole platform AND for that campaign, and the kill
@@ -69,6 +73,33 @@ const SEARCH_INTERVAL_MS = 45 * 1000;
 async function runDiscovery(s, campaign) {
   if (!agentEnabled(s, "lead", campaign)) return;
   if (campaign.mode === "single") return;
+
+  // Real data: people entered by hand in the Dev tab. Nothing is made up and nothing is searched for.
+  if (campaign.sourcing === "real") {
+    const waiting = s.prospects.filter((p) => p.campaignId === campaign.id && (p.stage === "discovered" || p.stage === "researched") && p.fit == null).length;
+    if (waiting >= SEARCH_BACKLOG) return;
+    const chosen = pickContacts(s, campaign, 3);
+    if (!chosen.length) return;
+    const provider = "real contact (entered by a person)";
+    const prospects = chosen.map((c) => {
+      const p = newProspect(campaign, { name: c.name, title: c.title, company: c.organisation, email: c.email || "", phone: c.phone || "" }, { provider, real: true, note: "A real person added in the Dev tab" });
+      p.email = c.email || "";
+      p.phone = c.phone || "";
+      p.contactId = c.id;
+      for (const fact of c.notes) addFact(p, { text: fact, source: "entered by a person", kind: "profile" });
+      return p;
+    });
+    for (const p of prospects) s.prospects.push(p);
+    campaign.funnel.discovered += prospects.length;
+    pushDecision(s, {
+      kind: "enriched", campaignId: campaign.id, agent: "Lead Research Agent", harness: "real contacts", engine: "matching",
+      headline: `Picked ${prospects.length} real ${prospects.length === 1 ? "contact" : "contacts"} for ${campaign.name}`,
+      summary: `Chose from the real contacts added by hand, best match to the audience first: ${prospects.map((p) => p.name).join(", ")}`,
+      evidence: ["Source: real people entered in the Dev tab. Nothing here is simulated.", `Audience: ${campaign.icpText || campaign.objective || "the campaign's target"}`],
+      instruction: "Rank the real contacts by how well they match the campaign's audience and hand the best to Research.", finalAction: "Hand each contact to Research",
+    });
+    return;
+  }
 
   if (campaign.sourcing === "simulated-search") {
     const waiting = s.prospects.filter((p) => p.campaignId === campaign.id && (p.stage === "discovered" || p.stage === "researched") && p.fit == null).length;
@@ -165,6 +196,7 @@ async function runResearch(s, campaign) {
 // Escalations (an objection that needs a compliance-accurate answer) always go to a human at every level.
 function autoApproval(s, campaign, prospect, type) {
   const ap = campaign.approvals || {};
+  if (isRealCampaign(campaign) && !config.realAutoSend) return { ok: false }; // real people: a human always approves
   if (ap.level === "autonomous") return { ok: true, why: "Autonomous approval level" };
   if (ap.level === "assisted") {
     const minScore = ap.autoMinScore ?? 85;
@@ -304,7 +336,9 @@ function holdOutreach(s, campaign, prospect, reason) {
 // before any message is drafted, and only over the channels that are enabled right now.
 async function runStrategy(s, campaign) {
   if (!agentEnabled(s, "strategy", campaign)) return;
-  const allowedChannels = campaign.channels.filter((k) => channelEnabled(s, k));
+  let allowedChannels = campaign.channels.filter((k) => channelEnabled(s, k));
+  // Voice is for real campaigns only, and a real campaign only uses channels that can really be sent right now.
+  allowedChannels = isRealCampaign(campaign) ? realChannels(allowedChannels) : allowedChannels.filter((k) => k !== "voice");
   if (!allowedChannels.length) return;
   const strategyAgent = agentById(s, "strategy");
   const batch = s.prospects
@@ -509,6 +543,7 @@ function applyRoutedReply(s, campaign, prospect, routed) {
 // campaign's meeting-approval rule; a plain answer goes out on its own only in an Autonomous campaign. Escalations never do.
 function sendsItself(s, campaign, prospect, kind, groundingOk) {
   if (!groundingOk) return false;
+  if (isRealCampaign(campaign) && !config.realAutoSend) return false;
   if (kind === "meeting") return !(campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok);
   return campaign.approvals.level === "autonomous";
 }
@@ -717,8 +752,9 @@ export async function processReply(s, campaign, prospect, { text, channel, kind 
 // The simulated replies: each tick a contacted prospect who has not replied has a small chance of writing back.
 async function runConversation(s, campaign) {
   if (!agentEnabled(s, "conversation", campaign)) return;
+  await pollInbox(s, campaign);
   const contacted = s.prospects.filter(
-    (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out") && !p.sandboxHuman
+    (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out") && !p.sandboxHuman && !isRealCampaign(campaign)
   );
   let handled = 0;
   for (const prospect of contacted) {
@@ -729,6 +765,61 @@ async function runConversation(s, campaign) {
     const { text, kind } = simulateReply();
     await processReply(s, campaign, prospect, { text, channel, kind });
   }
+}
+
+// Real email replies: for real campaigns, look in each contacted person's Gmail thread for new messages from them and handle each
+// one exactly as a typed reply. Runs at most every GMAIL_POLL_MS.
+const lastInbox = new Map();
+async function pollInbox(s, campaign) {
+  if (!isRealCampaign(campaign) || !gmailReady() || channelBlocker("email")) return;
+  if (Date.now() - (lastInbox.get(campaign.id) || 0) < config.gmail.pollMs) return;
+  lastInbox.set(campaign.id, Date.now());
+  for (const prospect of s.prospects.filter((p) => p.campaignId === campaign.id && p.emailThread && p.stage !== "rejected")) {
+    let replies = [];
+    try {
+      replies = await newReplies({ threadId: prospect.emailThread, seen: prospect.seenMessageIds || [] });
+    } catch (e) {
+      recordFailure(s, campaign, prospect, "inbox", e);
+      continue;
+    }
+    for (const r of replies) {
+      prospect.seenMessageIds = [...(prospect.seenMessageIds || []), r.id];
+      prospect.lastMessageId = r.messageId || prospect.lastMessageId;
+      await processReply(s, campaign, prospect, { text: r.text.slice(0, 2000), channel: "email", kind: "real email reply" });
+    }
+  }
+}
+
+/**
+ * A phone call has ended: its transcript joins the conversation and its outcome is acted on. Someone who asks not to be
+ * called goes on the do-not-contact list; anyone who wants more goes to a human, who books the meeting.
+ */
+export function completeCall(s, campaign, prospect) {
+  const v = prospect.voice;
+  if (!v) return;
+  for (const t of v.transcript) prospect.conversation.push({ dir: t.who === "sdr" ? "out" : "in", text: t.text, when: "Today", channel: "voice", sender: t.who === "sdr" ? (prospect.touches.at(-1) || {}).repName : undefined });
+  const heard = v.transcript.some((t) => t.who === "person");
+  prospect.history.push({ kind: "chat", text: `Phone call ${heard ? "completed" : "not answered"}: ${v.summary || v.outcome || "no outcome"}`, when: "Today" });
+  addNote(prospect, { agent: "Voice SDR Agent", harness: v.harness, engine: v.engine, note: heard ? `Phone call: ${v.summary || v.outcome}.` : "The call was not answered." });
+  if (!heard) return;
+  campaign.outreach.replies += 1;
+  if (v.outcome === "opt_out") {
+    s.seq += 1;
+    s.suppression.unshift({ id: `x${s.seq}`, contact: prospect.email || prospect.phone, reason: "Asked not to be contacted on a call", added: shortDate(Date.now()) });
+    prospect.stage = "rejected";
+    prospect.nextStep = "Suppressed: do not contact";
+    countOutcome(campaign, "negative");
+  } else if (v.outcome === "interested") {
+    if (prospect.stage === "contacted") { prospect.stage = "engaged"; campaign.funnel.engaged += 1; }
+    countOutcome(campaign, "positive");
+    escalate(s, campaign, prospect, { channel: "voice", title: "Wants to talk after a call", body: `${prospect.name} was open to a meeting on the call.`, draft: "Suggest a few times by email.", reasoning: v.summary || "Interested on the phone.", harness: v.harness || "voice" });
+  } else if (v.outcome === "callback") {
+    prospect.nextStep = "Asked for a call back";
+  } else if (v.outcome === "not_interested") {
+    prospect.nextStep = "Not interested (phone)";
+    countOutcome(campaign, "negative");
+  }
+  prospect.nextTouchTs = null;
 }
 
 // Follow-up Agent: cadence for contacted prospects who have gone quiet. WHEN is policy (the plan, the wait, the touch

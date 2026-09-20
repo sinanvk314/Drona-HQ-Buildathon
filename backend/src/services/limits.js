@@ -1,6 +1,7 @@
 // Hard limits on outreach that no agent may override (PS: daily limits, working hours, contact frequency).
 // They gate every new touch: an agent may propose one, but this decides whether it may go out now.
 import { config } from "../config.js";
+import { isRealCampaign, channelBlocker } from "./realMode.js";
 import { hoursToMs, simClockLabel, simDay, withinWorkingHours } from "./simTime.js";
 import { noRepReason } from "./reps.js";
 
@@ -33,6 +34,10 @@ export function recentTouchesTo(state, prospect, now = Date.now()) {
 /** -> { ok, reason }. `reason` is written into the Decision Journal and shown on the campaign. */
 export function outreachAllowed(state, campaign, prospect, now = Date.now(), channel = null) {
   // A sandbox is a person testing the SDR in real time: the simulated clock's working hours and limits would only get in the way.
+  if (isRealCampaign(campaign) && channel) {
+    const blocked = channelBlocker(channel);
+    if (blocked) return { ok: false, reason: `Real ${channel} cannot be sent: ${blocked}` };
+  }
   if (!config.enforceLimits || campaign.sandbox) return { ok: true };
   if (!withinWorkingHours(campaign, now)) {
     return { ok: false, reason: `Outside working hours (simulated time ${simClockLabel(now)}; window ${campaign.workingHours})` };

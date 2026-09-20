@@ -70,6 +70,26 @@ export const config = {
     secret: process.env.AUTH_SECRET || "",
     ttlHours: Number(process.env.AUTH_TTL_HOURS) || 168,
   },
+  // Real sending. Everything here is off until deliberately set up. A campaign whose data is "real" (its prospects are people
+  // entered by hand in the Dev tab) may send real email (Gmail API), SMS and calls (Twilio), and only when REAL_SENDING=on.
+  realSending: process.env.REAL_SENDING === "on",
+  // Real messages to a real person always wait for a human, unless this is on.
+  realAutoSend: process.env.REAL_AUTO_SEND === "on",
+  // Optional safety net: when set, real messages go only to these addresses or numbers (comma-separated).
+  realAllowlist: String(process.env.REAL_SEND_ALLOWLIST || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+  // The public address of this deployment (no trailing slash): Twilio calls back to it for replies and calls.
+  publicUrl: String(process.env.PUBLIC_URL || "").replace(/\/+$/, ""),
+  gmail: {
+    clientId: process.env.GMAIL_CLIENT_ID || "", clientSecret: process.env.GMAIL_CLIENT_SECRET || "", refreshToken: process.env.GMAIL_REFRESH_TOKEN || "",
+    sender: process.env.GMAIL_SENDER || "", // the Gmail address the refresh token belongs to
+    apiBase: process.env.GMAIL_API_BASE || "https://gmail.googleapis.com/gmail/v1", tokenUrl: process.env.GMAIL_TOKEN_URL || "https://oauth2.googleapis.com/token",
+    pollMs: Number(process.env.GMAIL_POLL_MS) || 30000,
+  },
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || "", authToken: process.env.TWILIO_AUTH_TOKEN || "",
+    smsFrom: process.env.TWILIO_SMS_FROM || "", voiceFrom: process.env.TWILIO_VOICE_FROM || process.env.TWILIO_SMS_FROM || "",
+    apiBase: process.env.TWILIO_API_BASE || "https://api.twilio.com/2010-04-01",
+  },
   // Meetings use real dates and times (a meeting is for people), in this time zone, for this long.
   meetingTimezone: process.env.MEETING_TIMEZONE || "Asia/Kolkata",
   meetingMinutes: Number(process.env.MEETING_MINUTES) || 30,

@@ -22,6 +22,7 @@ export function newProspect(campaign, fields, source, now = Date.now()) {
     title: fields.title || "",
     company: org,
     email: fields.email || `${name.split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, "")}@${org.toLowerCase().replace(/[^a-z0-9]+/g, "") || "unknown"}.example`,
+    phone: fields.phone || "",
     city: fields.city || "",
     linkedin: fields.linkedin || "",
     industry: fields.industry || "",

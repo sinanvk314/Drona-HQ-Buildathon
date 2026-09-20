@@ -222,3 +222,17 @@ export function ruleResearch({ campaign, prospect }) {
     reasoning: "Restated the prospect's own data; nothing was added from outside it.",
   };
 }
+
+/** A phone turn with no model: enough to be polite, hear a clear yes or no, and end the call. */
+export function ruleVoiceTurn({ campaign, prospect, transcript }) {
+  const turns = transcript.filter((t) => t.who === "sdr").length;
+  const said = ((transcript.filter((t) => t.who === "person").slice(-1)[0]) || {}).text || "";
+  const first = greetingName(prospect.name);
+  const offer = campaign.offer ? campaign.offer.split(/(?<=[.!?])\s/)[0] : "";
+  if (!transcript.length) return { say: `Hello ${first}, this is a quick call about something that may be useful to you. ${offer} Is now an okay time?`.trim(), end: false, outcome: "continue", summary: "Opening the call." };
+  if (/(don'?t call|do not call|stop calling|remove me|take me off|unsubscribe)/i.test(said)) return { say: "Understood, I am sorry to have bothered you. We will not contact you again. Goodbye.", end: true, outcome: "opt_out", summary: "They asked not to be contacted." };
+  if (/(not interested|no thanks|no thank you|not now|busy)/i.test(said) && !/(later|tomorrow)/i.test(said)) return { say: "No problem at all, thank you for your time. Goodbye.", end: true, outcome: "not_interested", summary: "They were not interested." };
+  if (/(later|tomorrow|next week|call back)/i.test(said)) return { say: "Of course, I will try again another time. Thank you, goodbye.", end: true, outcome: "callback", summary: "They asked for a call back." };
+  if (/(yes|sure|okay|ok|interested|tell me|go ahead|sounds good|meeting|call)/i.test(said) || turns >= 3) return { say: "Wonderful, I will email you a few times that could work. Thank you, and goodbye.", end: true, outcome: "interested", summary: "They were open to a meeting." };
+  return { say: `${offer || "We would like to share something useful."} Would you be open to a short conversation?`, end: false, outcome: "continue", summary: "Explaining why we called." };
+}

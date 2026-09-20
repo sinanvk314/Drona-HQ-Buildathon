@@ -26,7 +26,7 @@ import {
 // shows these so nothing about what an agent is told is hidden.
 export const FIXED_PROMPTS = () => ({
   lead: SOURCE_SYSTEM, research: RESEARCH_SYSTEM, icp: ICP_SYSTEM, strategy: STRATEGY_SYSTEM,
-  personalisation: PERSONALISATION_SYSTEM, conversation: CONVERSATION_SYSTEM, followup: FOLLOWUP_SYSTEM,
+  personalisation: PERSONALISATION_SYSTEM, conversation: CONVERSATION_SYSTEM, followup: FOLLOWUP_SYSTEM, voice: VOICE_SYSTEM,
 });
 
 export class GeminiError extends Error {
@@ -116,11 +116,7 @@ Rules:
 4. gaps: up to 4 important things we do not know that would help (for example whether they decide on this, or recent activity).
 5. summary is 2 sentences. confidence is low, medium or high, by how much is actually known. reasoning is 1 sentence.`;
 
-const SOURCE_SYSTEM = `You are a people-search tool, imitating a search of a professional network or lead database. Given a description of a target audience, you return candidate people who match it. This tool is a stand-in used before real data sources are connected.
-
-IMPORTANT: every person and organisation you return must be FICTIONAL. Invent plausible names. Never return a real, famous or identifiable person, and never a real small organisation. Email addresses must end in ".example".
-
-The user message is a JSON object with: campaign (name, objective, offer, icp, personas, geography, company_criteria, exclusion_criteria), count, and avoid (names already returned).
+const SOURCE_RULES = `The user message is a JSON object with: campaign (name, objective, offer, icp, personas, geography, company_criteria, exclusion_criteria), count, and avoid (names already returned).
 
 Rules:
 1. Return exactly count candidates. Most should match the audience closely; one or two should be near misses (a different seniority, size or region), as a real search would return.
@@ -128,6 +124,20 @@ Rules:
 3. Fit the audience even when it is not a company: if it is students, return students with their college and club; if it is doctors, clinics; and so on. organisation is the college, club, clinic or company.
 4. facts: 2 to 4 short, specific, plausible facts about each person (a role held, an activity, something recent). attributes: any other useful key/value details (for example college, year, club).
 5. size describes the organisation in plain words (for example "120 employees" or "about 3,000 students").`;
+
+const SOURCE_SYSTEM = `You are a people-search tool, imitating a search of a professional network or lead database. Given a description of a target audience, you return candidate people who match it. This tool is a stand-in used before real data sources are connected.
+
+IMPORTANT: every person and organisation you return must be FICTIONAL. Invent plausible names. Never return a real, famous or identifiable person, and never a real small organisation. Email addresses must end in ".example".
+
+${SOURCE_RULES}`;
+
+// When the audience is individuals (famous people, creators, public figures) rather than people at organisations.
+const SOURCE_INDIVIDUALS_SYSTEM = `You are a people-search tool, imitating a search for notable individuals. Given a description of who to find, you return candidate people who match it. The audience is INDIVIDUALS, not employees of companies.
+
+You MAY return real, well-known public figures (for example founders, creators, athletes, authors, academics, artists) when the description asks for famous or notable people, and you may otherwise return fictional individuals. Rules for real public figures: only people who are genuinely well known; their name, and only facts that are widely known and public (their work, achievements, public roles). Never invent or guess private details, contact details, opinions or anything you are not sure of. Never return a private individual who is not publicly notable. Never return someone as a public figure if you are not confident they exist and match.
+Email addresses must ALWAYS end in ".example" (you do not know anyone's real address). organisation is what they are known for or their public affiliation (for example a company they lead, a team, a university, or "Independent creator"); it may be a short description.
+
+${SOURCE_RULES}`;
 
 const MEETING_REPLY_SYSTEM = `You read a prospect's reply to meeting times that an SDR proposed, and say what the reply means.
 
@@ -366,18 +376,18 @@ export function normalizeResearch(o) {
 }
 
 /** Candidates from the imitated search: fictional by construction, so emails are forced onto the reserved .example domain. */
-export function normalizeCandidates(o, { count, avoid = [] }) {
+export function normalizeCandidates(o, { count, avoid = [], individuals = false }) {
   const seen = new Set(avoid.map((n) => String(n).toLowerCase()));
   const out = [];
   for (const c of Array.isArray(o.candidates) ? o.candidates : []) {
     const name = String((c && c.name) || "").trim();
     const org = String((c && c.organisation) || "").trim();
-    if (!name || !org || seen.has(name.toLowerCase())) continue;
+    if (!name || (!org && !individuals) || seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
     const [first, ...rest] = name.split(/\s+/);
-    const email = /@[^\s]+\.example$/i.test(c.email || "") ? c.email.trim().toLowerCase() : `${slug(first)}.${slug(rest.join("")) || "x"}@${slug(org)}.example`;
+    const email = /@[^\s]+\.example$/i.test(c.email || "") ? c.email.trim().toLowerCase() : `${slug(first)}.${slug(rest.join("")) || "x"}@${slug(org) || "public"}.example`;
     out.push({
-      name, title: String(c.title || "").trim(), company: org, email, industry: String(c.industry || "").trim(), size: String(c.size || "").trim(), city: String(c.location || "").trim(),
+      name, title: String(c.title || "").trim(), company: org || "Independent", email, industry: String(c.industry || "").trim(), size: String(c.size || "").trim(), city: String(c.location || "").trim(),
       facts: (Array.isArray(c.facts) ? c.facts : []).map((f) => String(f || "").trim()).filter(Boolean).slice(0, 4),
       attributes: Object.fromEntries((Array.isArray(c.attributes) ? c.attributes : []).filter((a) => a && a.key && a.value).slice(0, 6).map((a) => [String(a.key).trim(), String(a.value).trim()])),
     });
@@ -448,9 +458,46 @@ export async function geminiResearch({ campaign, prospect, promptText, override,
 
 export async function geminiSourceProspects({ campaign, count, avoid = [] }) {
   const input = { campaign: { ...campaignBlock(campaign), company_criteria: campaign.companyCriteria, exclusion_criteria: campaign.exclusionCriteria }, count, avoid };
-  const out = await generate({ agent: "lead", campaignId: campaign.id, system: SOURCE_SYSTEM, input, schema: SOURCE_SCHEMA });
-  return normalizeCandidates(out, { count, avoid });
+  const out = await generate({ agent: "lead", campaignId: campaign.id, system: sourceSystemFor(campaign), input, schema: SOURCE_SCHEMA });
+  return normalizeCandidates(out, { count, avoid, individuals: campaign.audienceKind === "individuals" });
 }
+
+const VOICE_SYSTEM = `You are the voice of an SDR making a short outbound phone call, one turn at a time. You speak, then the person answers, and you decide what to say next. What you write is spoken aloud by a text-to-speech voice, so write natural spoken sentences: short, warm, no lists, no emojis, no markdown, no URLs.
+
+The user message is a JSON object with: campaign (objective, offer), person (name, title, organisation), dossier (what is known), transcript (the call so far, oldest first; each has who = "sdr" or "person" and text), turn (how many things you have said), and instruction.
+
+Rules:
+1. Only say things supported by the campaign offer, the dossier or the knowledge. Never invent a number, customer, feature or promise.
+2. First turn (transcript is empty): introduce yourself briefly, say why you are calling in one sentence, and ask if now is an okay time.
+3. Keep each turn to one or two short sentences and end with a question until you are ending the call.
+4. If they are interested or ask for a meeting: say you will email a few times that work, thank them, and end the call with outcome "interested".
+5. If they ask you to call later: agree politely, end with outcome "callback". If they are not interested: thank them and end with outcome "not_interested". If they ask not to be contacted again: apologise, confirm you will not contact them again, end with outcome "opt_out".
+6. If they ask something you cannot answer from the given material, say so honestly, offer to have a colleague follow up by email, and end with outcome "interested".
+7. After about five turns, wrap up politely. Until you end the call, outcome is "continue". summary is one plain sentence about how the call is going or went.`;
+
+const VOICE_SCHEMA = {
+  type: "OBJECT",
+  properties: { say: S, end: { type: "BOOLEAN" }, outcome: { type: "STRING", enum: ["continue", "interested", "callback", "not_interested", "opt_out"] }, summary: S },
+  required: ["say", "end", "outcome", "summary"],
+};
+
+export function normalizeVoiceTurn(o) {
+  const outcome = ["continue", "interested", "callback", "not_interested", "opt_out"].includes(o.outcome) ? o.outcome : "continue";
+  const say = String(o.say || "").replace(/\s+/g, " ").trim().slice(0, 400);
+  if (!say) throw new GeminiError("the voice turn was empty");
+  return { say, end: !!o.end || outcome !== "continue", outcome, summary: String(o.summary || "").trim().slice(0, 300) };
+}
+
+export async function geminiVoiceTurn({ campaign, prospect, transcript, promptText }) {
+  const input = {
+    campaign: { objective: campaign.objective, offer: campaign.offer }, person: { name: prospect.name, title: prospect.title, organisation: prospect.company },
+    dossier: dossierFor(prospect), transcript, turn: transcript.filter((t) => t.who === "sdr").length, instruction: promptText,
+  };
+  const out = await generate({ agent: "voice", campaignId: campaign.id, system: VOICE_SYSTEM, input, schema: VOICE_SCHEMA });
+  return normalizeVoiceTurn(out);
+}
+
+export const sourceSystemFor = (campaign) => (campaign && campaign.audienceKind === "individuals" ? SOURCE_INDIVIDUALS_SYSTEM : SOURCE_SYSTEM);
 
 export function normalizeMeetingReply(o, slotCount) {
   const choice = Number.isInteger(o.choice) && o.choice >= 0 && o.choice < slotCount ? o.choice : -1;

@@ -22,6 +22,8 @@ import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
 import { parseWorkingHours, simClockLabel, withinWorkingHours } from "./simTime.js";
 import { config, isDronahqMode, isGeminiMode } from "../config.js";
 import { embeddingsStatus } from "./embeddings.js";
+import { normalisePhone } from "./contacts.js";
+import { channelBlocker, gmailReady, isRealCampaign, realChannels, recipientBlocker, smsReady, voiceReady } from "./realMode.js";
 import { currentUser } from "./auth.js";
 import { activeSystemPrompt, activeVersionOf, initCampaignPrompts, logPromptChange, pinnedVersion } from "./prompts.js";
 
@@ -257,7 +259,7 @@ const union = (options, chosen) => [...options, ...chosen.filter((x) => !options
 function formValues(c) {
   return {
     name: c.name, description: c.description, owner: c.owner, objective: c.objective, offer: c.offer || "", icpText: c.icpText,
-    mode: c.mode || "bulk", sourcing: c.sourcing || "synthetic", target: c.target || null,
+    mode: c.mode || "bulk", sourcing: c.sourcing || "synthetic", audienceKind: c.audienceKind || "organisations", target: c.target || null,
     geographyOptions: union(GEOGRAPHY_OPTIONS, c.geography), geography: [...c.geography],
     personaOptions: union(PERSONA_OPTIONS, c.personas), personas: [...c.personas],
     companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: [...c.channels],
@@ -274,7 +276,7 @@ function formValues(c) {
 export function getCampaignDefaults() {
   return {
     name: "", description: "", owner: currentUser(), objective: "", offer: "", brief: "", icpText: "",
-    mode: "bulk", sourcing: "simulated-search", target: { name: "", title: "", organisation: "", email: "", notes: "" },
+    mode: "bulk", sourcing: "simulated-search", audienceKind: "organisations", target: { name: "", title: "", organisation: "", email: "", phone: "", notes: "" },
     geographyOptions: [...GEOGRAPHY_OPTIONS], geography: [], personaOptions: [...PERSONA_OPTIONS], personas: [],
     companyCriteria: "", exclusionCriteria: "", channels: ["email"], qualificationPrompt: "",
     dailyLimit: 25, workingHours: "9:00 AM – 6:00 PM", cadence: { maxTouches: 3, waitHours: 72 },
@@ -354,6 +356,19 @@ export function getLaunchReview(id) {
   if (!on.length) add("channels", "Channels", "block", `None of this campaign's channels (${c.channels.join(", ") || "none selected"}) is enabled, so nothing can be sent.`);
   else if (off.length) add("channels", "Channels", "warn", `${on.join(", ")} enabled. ${off.join(", ")} is paused platform-wide and will be skipped.`);
   else add("channels", "Channels", "ok", `${on.join(", ")} enabled.`);
+
+  // Real data and real sending
+  if (c.sourcing === "real") {
+    const usable = realChannels(c.channels);
+    const blockedWhy = c.channels.map((k) => `${k}: ${channelBlocker(k) || "ready"}`).join("; ");
+    if (!usable.length) add("real", "Real sending", "block", `This campaign uses real data, but none of its channels can really send yet. ${blockedWhy}.`);
+    else if (usable.length < c.channels.length) add("real", "Real sending", "warn", `Ready to send for real on ${usable.join(", ")}. Not on the others (${blockedWhy}).`);
+    else add("real", "Real sending", "ok", `Real messages will be sent on ${usable.join(", ")}. Every message to a real person waits for a human to approve it${config.realAutoSend ? " (REAL_AUTO_SEND is on, so approved levels apply)" : ""}.`);
+    if (c.mode !== "single") {
+      const n = (s.realContacts || []).length;
+      add("contacts", "Real contacts", n ? "ok" : "block", n ? `${n} real contact${n === 1 ? "" : "s"} to choose from.` : "There are no real contacts. Add people in the Dev tab first.");
+    }
+  }
 
   // Knowledge
   if (!c.sources.length) add("knowledge", "Knowledge base", "warn", "No knowledge sources. Agents will have nothing to retrieve from and drafts will be generic.");
@@ -533,7 +548,7 @@ function normalizeTarget(t = {}) {
   const lines = Array.isArray(t.notes) ? t.notes : String(t.notes || "").split(/\r?\n/);
   return {
     name: String(t.name || "").trim().slice(0, 120), title: String(t.title || "").trim().slice(0, 160), organisation: String(t.organisation || "").trim().slice(0, 160),
-    email: String(t.email || "").trim().slice(0, 160), notes: lines.map((x) => String(x).trim()).filter(Boolean).slice(0, 20), real: !!t.real,
+    email: String(t.email || "").trim().slice(0, 160), phone: String(t.phone || "").trim().slice(0, 40), notes: lines.map((x) => String(x).trim()).filter(Boolean).slice(0, 20), real: !!t.real,
   };
 }
 
@@ -617,7 +632,7 @@ export function createCampaign(values, { launch = false } = {}) {
     const name = values.name.trim();
     s.campaigns.push({
       id, name, shortName: name, status: launch ? "live" : "draft",
-      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), offer: (values.offer || "").trim(), mode: values.mode === "single" ? "single" : "bulk", sourcing: values.sourcing === "synthetic" ? "synthetic" : "simulated-search", sandbox: !!values.sandbox, target: values.mode === "single" ? normalizeTarget(values.target) : null, description: (values.description || "").trim(),
+      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), offer: (values.offer || "").trim(), mode: values.mode === "single" ? "single" : "bulk", sourcing: ["synthetic", "real"].includes(values.sourcing) ? values.sourcing : "simulated-search", audienceKind: values.audienceKind === "individuals" ? "individuals" : "organisations", sandbox: !!values.sandbox, target: values.mode === "single" ? normalizeTarget(values.target) : null, description: (values.description || "").trim(),
       icpSummary: [(values.personas || []).join(" & "), (values.geography || []).join(", ")].filter(Boolean).join(" · "),
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
@@ -631,7 +646,9 @@ export function createCampaign(values, { launch = false } = {}) {
     if (created.mode === "single" && created.target && created.target.name) {
       // A single-target campaign is aimed at exactly the person entered: they become its one prospect.
       const t = created.target;
-      const p = newProspect(created, { name: t.name, title: t.title, company: t.organisation, email: t.email || undefined }, { provider: "entered by a person", real: !created.sandbox || !!t.real, note: "Details typed in by a person" });
+      const real = created.sourcing === "real" && !created.sandbox;
+      const p = newProspect(created, { name: t.name, title: t.title, company: t.organisation || "Independent", email: t.email || undefined, phone: t.phone || "" }, { provider: "entered by a person", real: real || !created.sandbox || !!t.real, note: "Details typed in by a person" });
+      if (real) { p.email = t.email || ""; p.phone = normalisePhone(t.phone); }
       for (const note of t.notes) addFact(p, { text: note, source: "entered by a person", kind: "profile" });
       p.sandboxHuman = !!created.sandbox;
       s.prospects.push(p);
@@ -726,6 +743,10 @@ export function decideApproval(id, { action, reason = "" } = {}) {
     const now = Date.now();
     const p = s.prospects.find((x) => x.id === a.prospectId);
     const c = s.campaigns.find((x) => x.id === a.campaignId);
+    if (action === "approve" && p && isRealCampaign(c) && a.channel) {
+      const why = channelBlocker(a.channel) || recipientBlocker(a.channel, p);
+      if (why) throw new Error(`This cannot be sent for real: ${why}.`);
+    }
     a.status = action === "approve" ? "approved" : "rejected";
     a.decidedBy = currentUser();
     a.decidedTs = now;
@@ -997,6 +1018,8 @@ export function getBlueprint(id) {
       { name: "Knowledge retrieval", status: c.sources.length ? "on" : "empty", note: `${c.sources.length} source${c.sources.length === 1 ? "" : "s"} searched by meaning before every decision` },
       c.mode === "single"
         ? { name: "Prospect sourcing", status: "on", note: "Single-target: the campaign is aimed at one named person, entered by a person" }
+        : c.sourcing === "real"
+        ? { name: "Prospect sourcing", status: "on", note: "Real contacts: people entered by hand in the Dev tab, picked by how well they match the audience" }
         : { name: "Prospect sourcing", status: "simulated", note: c.sourcing === "simulated-search" ? "Imitated people search: an AI acts as a search tool and returns fictional people that match the audience" : "Free generator of made-up company prospects. Real data sources are on the roadmap" },
       { name: "Reply routing", status: "on", note: "Clear opt-outs, hostile replies and out-of-office handled without an LLM" },
       { name: "Grounding check", status: "on", note: "Every draft is checked against the knowledge and the dossier before it can go out" },
@@ -1192,6 +1215,7 @@ export function inspectPrompt(campaignId, agentId, harness = "") {
 function integrationStatus() {
   const emb = embeddingsStatus();
   const geminiKey = !!config.gemini.apiKey;
+  const real = config.realSending;
   return [
     {
       name: "Gemini", kind: "Model",
@@ -1208,8 +1232,21 @@ function integrationStatus() {
       state: isDronahqMode() ? "problem" : "idle",
       note: isDronahqMode() ? "Configured, but its webhook has not returned agent output in our tests, so the chain falls back" : "An adapter is built but not in use: its webhook returned no agent output in our tests",
     },
-    { name: "Gmail API", kind: "Sending", state: "not-built", note: "Not built. Email is simulated: messages are recorded, never sent" },
-    { name: "Twilio", kind: "Sending", state: "not-built", note: "Not built. SMS is simulated" },
-    { name: "Apollo", kind: "Prospect data", state: "not-built", note: "Not built. Prospects come from an AI-imitated people search or the free generator" },
+    {
+      name: "Gmail API", kind: "Email",
+      state: gmailReady() ? (real ? "connected" : "idle") : "not-configured",
+      note: gmailReady() ? (real ? `Sending and reading replies as ${config.gmail.sender}, for real campaigns only` : "Set up, but REAL_SENDING is off, so nothing is sent") : "Add the GMAIL_* settings to send real email. Until then email is simulated",
+    },
+    {
+      name: "Twilio SMS", kind: "SMS",
+      state: smsReady() ? (real ? "connected" : "idle") : "not-configured",
+      note: smsReady() ? (real ? "Sending real texts, and receiving replies at /webhooks/twilio/sms, for real campaigns only" : "Set up, but REAL_SENDING is off, so nothing is sent") : "Add the TWILIO_* settings to send real texts. Until then SMS is simulated",
+    },
+    {
+      name: "Twilio Voice", kind: "Calls",
+      state: voiceReady() ? (real ? "connected" : "idle") : "not-configured",
+      note: voiceReady() ? (real ? "The Voice SDR can place calls, for real campaigns only" : "Set up, but REAL_SENDING is off, so no call is placed") : "Needs the TWILIO_* settings and PUBLIC_URL. Voice is never used in a simulated campaign",
+    },
+    { name: "Apollo", kind: "Prospect data", state: "not-built", note: "Not built. Real prospects are the people you add by hand in the Dev tab; simulated ones come from the AI-imitated search" },
   ];
 }
