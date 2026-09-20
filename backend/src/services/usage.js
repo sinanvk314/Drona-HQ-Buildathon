@@ -22,6 +22,7 @@ const blank = () => ({
   llmDecisions: 0, // decisions an LLM actually made
   llmErrors: 0,
   byModel: {},
+  byCampaign: {}, // per campaign: LLM decisions, tokens, and decisions settled without an LLM (so campaigns can be compared)
   byAgent: {}, // per agent: successful decisions, tokens and latency of the LLM calls behind them
   avoided: { icpShortcut: 0, replyRouting: 0, capFallback: 0 }, // decisions that needed no LLM call
   ruleFallbacks: 0, // an LLM engine failed and the rule engine decided
@@ -68,8 +69,14 @@ export function recordLlmCall(model) {
 }
 
 /** A request that produced usable agent output: counts the decision and its tokens and latency. */
-export function recordLlmUsage({ agent = "other", tokensIn, tokensOut, ms }) {
+export function recordLlmUsage({ agent = "other", campaignId, tokensIn, tokensOut, ms }) {
   rollDay();
+  if (campaignId) {
+    const c = (usage.byCampaign[campaignId] ||= { decisions: 0, tokensIn: 0, tokensOut: 0, avoided: 0 });
+    c.decisions += 1;
+    c.tokensIn += Number(tokensIn) || 0;
+    c.tokensOut += Number(tokensOut) || 0;
+  }
   const a = (usage.byAgent[agent] ||= { decisions: 0, tokensIn: 0, tokensOut: 0, ms: 0 });
   a.decisions += 1;
   a.tokensIn += Number(tokensIn) || 0;
@@ -91,8 +98,12 @@ export function recordLlmError() {
 }
 
 /** reason: "icpShortcut" | "replyRouting" | "capFallback" — a decision made without an LLM call. */
-export function recordAvoided(reason) {
+export function recordAvoided(reason, campaignId) {
   rollDay();
+  if (campaignId) {
+    const c = (usage.byCampaign[campaignId] ||= { decisions: 0, tokensIn: 0, tokensOut: 0, avoided: 0 });
+    c.avoided += 1;
+  }
   usage.avoided[reason] = (usage.avoided[reason] || 0) + 1;
   usage.totals.avoided += 1;
   save();
@@ -140,6 +151,9 @@ export function getUsage() {
     llmErrors: usage.llmErrors,
     byModel: { ...usage.byModel },
     byAgent: agents,
+    byCampaign: Object.fromEntries(
+      Object.entries(usage.byCampaign).map(([id, c]) => [id, { ...c, estCostUsd: Number(tokenCost(c.tokensIn, c.tokensOut).toFixed(6)) }])
+    ),
     tokensIn,
     tokensOut,
     avgLatencyMs: measured ? Math.round(totalMs / measured) : 0,

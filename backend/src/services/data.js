@@ -216,6 +216,7 @@ export function getCampaign(id) {
       id: a.id, title: a.title, globallyEnabled: a.enabled,
       enabled: !(c.agentsEnabled && c.agentsEnabled[a.id] === false),
     })),
+    copiedFrom: c.copiedFrom ? (() => { const o = s.campaigns.find((x) => x.id === c.copiedFrom); return o ? { id: o.id, name: o.name } : null; })() : null,
     activity: activityFor(s, c, pending),
     outcomes: outcomesFor(c, f, o),
     prompts: promptsView(s, c),
@@ -259,6 +260,44 @@ export function getCampaignConfig(id) {
   const s = getState();
   const c = campaignOf(s, id);
   return { ...formValues(c), id: c.id, rawStatus: c.status };
+}
+
+/**
+ * Campaigns side by side (PS: compare performance across campaigns, and a campaign against its variant): funnel
+ * results, reply outcomes and cost. Cost is today's LLM spend for the campaign (from token counts) divided by the
+ * work it produced today; `avoided` is the share of decisions that needed no LLM call.
+ */
+export function getComparison(ids) {
+  const s = getState();
+  const usage = getUsage();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const chosen = (ids && ids.length ? ids : s.campaigns.filter((c) => c.status !== "archived").map((c) => c.id))
+    .map((id) => s.campaigns.find((c) => c.id === id))
+    .filter(Boolean);
+
+  return chosen.map((c) => {
+    const draft = c.status === "draft";
+    const f = draft ? zeroFunnel() : c.funnel;
+    const o = draft ? { emails: 0, linkedin: 0, replies: 0, followups: 0 } : c.outreach;
+    const out = outcomesFor(c, f, o);
+    const cu = usage.byCampaign[c.id] || { decisions: 0, avoided: 0, estCostUsd: 0 };
+    const todayDecisions = s.decisions.filter((d) => d.campaignId === c.id && d.engine && d.ts >= startOfDay.getTime());
+    const qualifiedToday = todayDecisions.filter((d) => d.kind === "qualified").length;
+    const scoredToday = todayDecisions.filter((d) => d.kind === "qualified" || d.kind === "rejected").length;
+    const per = (cost, n) => (n ? Number((cost / n).toFixed(6)) : null);
+    return {
+      id: c.id, name: c.name, status: effectiveStatus(s, c), copiedFrom: c.copiedFrom || null,
+      prospects: f.discovered, qualified: f.qualified, contacted: f.contacted, replies: o.replies, meetings: f.meeting,
+      qualifyRate: out.rates.qualify, replyRate: out.rates.reply, meetingRate: out.rates.meeting,
+      positiveRate: out.positiveRate, negativeRate: out.negativeRate, responses: out.total,
+      failed: (c.failures && c.failures.total) || 0,
+      llmDecisions: cu.decisions, decisionsWithoutLlm: cu.avoided,
+      avoidedPct: cu.decisions + cu.avoided ? Math.round((cu.avoided / (cu.decisions + cu.avoided)) * 100) : null,
+      costTodayUsd: cu.estCostUsd, costPerProspect: per(cu.estCostUsd, scoredToday), costPerQualified: per(cu.estCostUsd, qualifiedToday),
+      qualifiedToday, scoredToday,
+    };
+  });
 }
 
 export function getProspects() {
@@ -526,7 +565,7 @@ export function duplicateCampaign(id) {
     const name = `${src.name} (copy)`;
     s.campaigns.push({
       ...JSON.parse(JSON.stringify(src)),
-      id: newId, name, shortName: name, status: "draft",
+      id: newId, name, shortName: name, status: "draft", copiedFrom: src.id,
       sources: src.sources.map((x) => ({ ...x, id: `s${++s.seq}` })),
       funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
       responseRate: 0, createdTs: now, modifiedTs: now,

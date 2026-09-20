@@ -75,6 +75,9 @@ export default function CampaignDetail({ params }) {
             {c.icpSummary} &nbsp;·&nbsp; Objective: {c.objective} &nbsp;·&nbsp; Owner: {c.owner}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>Last modified {timeAgo(c.modifiedTs)}</div>
+          {c.copiedFrom && (
+            <button type="button" className="btn btn-secondary" onClick={() => navigate("analytics", { ids: [c.copiedFrom.id, c.id] })}>Compare with original</button>
+          )}
           <button type="button" className="btn btn-secondary" onClick={duplicate}>Duplicate</button>
           {canComplete && <button type="button" className="btn btn-secondary" onClick={() => setConfirm("complete")}>Complete</button>}
           {canArchive && <button type="button" className="btn btn-secondary" onClick={() => setConfirm("archive")}>Archive</button>}

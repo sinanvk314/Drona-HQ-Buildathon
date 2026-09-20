@@ -368,7 +368,7 @@ function simulateReply() {
 // contact everywhere (the global do-not-contact list every campaign checks); out-of-office just waits.
 function applyRoutedReply(s, campaign, prospect, routed) {
   const optOut = routed.category === "unsubscribe" || routed.category === "hostile";
-  recordAvoided("replyRouting");
+  recordAvoided("replyRouting", campaign.id);
   if (optOut) countOutcome(campaign, "negative");
   prospect.history.push({ kind: "email", text: optOut ? `Reply received — opt-out (${routed.category})` : "Out-of-office auto-reply received", when: "Today" });
 

@@ -53,3 +53,24 @@ test("duplicating makes an independent Draft with the same setup and no metrics"
   const overrides = getState().agents.flatMap((a) => a.overrides);
   assert.equal(overrides.some((o) => o.campaignId === "c_ai_founders"), overrides.some((o) => o.campaignId === id));
 });
+
+test("campaigns can be compared side by side, including a copy against its original", async () => {
+  const { recordLlmUsage, recordAvoided } = await import("../src/services/usage.js");
+  const { id: copyId } = data.duplicateCampaign("c_us_saas");
+  recordLlmUsage({ agent: "icp", campaignId: "c_us_saas", tokensIn: 1000, tokensOut: 200, ms: 500 });
+  recordAvoided("icpShortcut", "c_us_saas");
+  recordAvoided("icpShortcut", "c_us_saas");
+
+  const rows = data.getComparison(["c_us_saas", copyId]);
+  assert.deepEqual(rows.map((r) => r.id), ["c_us_saas", copyId]);
+  const [original, copy] = rows;
+  assert.equal(copy.copiedFrom, "c_us_saas");
+  assert.equal(copy.status, "draft");
+  assert.equal(copy.prospects, 0, "a fresh copy has no results yet");
+  assert.ok(original.llmDecisions >= 1 && original.decisionsWithoutLlm >= 2);
+  assert.ok(original.avoidedPct >= 50 && original.costTodayUsd > 0);
+  assert.equal(copy.costTodayUsd, 0, "cost is per campaign: the copy has spent nothing");
+  assert.equal(copy.costPerQualified, null, "no qualified leads yet, so no cost per lead");
+  assert.equal(data.getCampaign(copyId).copiedFrom.name, original.name);
+  assert.ok(data.getComparison().length >= 3, "with no ids, every non-archived campaign is compared");
+});

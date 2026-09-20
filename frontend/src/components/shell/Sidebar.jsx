@@ -12,7 +12,7 @@ const ITEMS = [
   { key: "approvals", label: "Approvals", icon: "check", route: "approvals" },
   { key: "agents", label: "Agents & Prompts", icon: "sliders", route: "agents" },
   { key: "knowledge", label: "Knowledge", icon: "book", route: "knowledge" },
-  { key: "analytics", label: "Analytics", icon: "bars", route: "analytics" },
+  { key: "analytics", label: "Compare", icon: "bars", route: "analytics" },
   { key: "settings", label: "Settings", icon: "gear", route: "settings" },
 ];
 

@@ -87,7 +87,7 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   const hasBuyingSignal = (prospect.history || []).some((h) => /hiring|raised|announced|migrat|launch/i.test(h.text || ""));
   const clearCut = margin > 0 && !ruleResult.qualified && ruleResult.score <= ruleResult.threshold - margin && !hasBuyingSignal;
   if (clearCut) {
-    recordAvoided("icpShortcut");
+    recordAvoided("icpShortcut", campaign.id);
     return {
       ...ruleResult,
       engine: "rule-shortcut",

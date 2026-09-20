@@ -182,7 +182,7 @@ async function throttle() {
   if (start > now) await new Promise((resolve) => setTimeout(resolve, start - now));
 }
 
-async function generateOnce({ system, input, schema, agent }, model) {
+async function generateOnce({ system, input, schema, agent, campaignId }, model) {
   const g = config.gemini;
   if (!g.apiKey) throw new GeminiError("GEMINI_API_KEY is not set");
   if (capReached()) throw new GeminiError(`daily LLM call cap reached (LLM_DAILY_CALL_CAP=${config.llmDailyCallCap})`);
@@ -230,7 +230,7 @@ async function generateOnce({ system, input, schema, agent }, model) {
     if (!text.trim()) throw new GeminiError(`empty response (finishReason: ${data?.candidates?.[0]?.finishReason || "unknown"})`);
     const output = parseAgentOutput(text);
     // Only a request that produced usable output counts as an agent decision; tokens and latency feed the cost figures.
-    recordLlmUsage({ agent, tokensIn: data?.usageMetadata?.promptTokenCount, tokensOut: data?.usageMetadata?.candidatesTokenCount, ms: Date.now() - startedAt });
+    recordLlmUsage({ agent, campaignId, tokensIn: data?.usageMetadata?.promptTokenCount, tokensOut: data?.usageMetadata?.candidatesTokenCount, ms: Date.now() - startedAt });
     return output;
   } catch (e) {
     if (e instanceof GeminiError) throw e;
@@ -285,13 +285,13 @@ const baseInput = (campaign, prospect, promptText, knowledge) => ({
 });
 
 export async function geminiScoreICP({ campaign, prospect, promptText, knowledge }) {
-  const out = await generate({ agent: "icp", system: ICP_SYSTEM, input: baseInput(campaign, prospect, promptText, knowledge), schema: ICP_SCHEMA });
+  const out = await generate({ agent: "icp", campaignId: campaign.id, system: ICP_SYSTEM, input: baseInput(campaign, prospect, promptText, knowledge), schema: ICP_SCHEMA });
   return normalizeICP(out);
 }
 
 export async function geminiDraftOutreach({ campaign, prospect, promptText, override, knowledge, channel }) {
   const input = { ...baseInput(campaign, prospect, promptText, knowledge), campaign_override: override || null };
-  const out = await generate({ agent: "personalisation", system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign, channel) });
+  const out = await generate({ agent: "personalisation", campaignId: campaign.id, system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign, channel) });
   return normalizeDraft(out, campaign);
 }
 
@@ -301,7 +301,7 @@ export async function geminiPlanOutreach({ campaign, prospect, promptText, overr
     constraints: { allowed_channels: allowedChannels, max_touches: maxTouches, default_wait_hours: defaultWait },
     campaign_override: override || null,
   };
-  const out = await generate({ agent: "strategy", system: STRATEGY_SYSTEM, input, schema: strategySchema(allowedChannels, maxTouches) });
+  const out = await generate({ agent: "strategy", campaignId: campaign.id, system: STRATEGY_SYSTEM, input, schema: strategySchema(allowedChannels, maxTouches) });
   return normalizePlan(out, { allowed: allowedChannels, maxTouches, defaultWait });
 }
 
@@ -312,7 +312,7 @@ export async function geminiDraftFollowUp({ campaign, prospect, promptText, over
     follow_up: { channel, touch_number: touchNumber, is_last_touch: !!isLast },
     campaign_override: override || null,
   };
-  const out = await generate({ agent: "followup", system: FOLLOWUP_SYSTEM, input, schema: FOLLOWUP_SCHEMA });
+  const out = await generate({ agent: "followup", campaignId: campaign.id, system: FOLLOWUP_SYSTEM, input, schema: FOLLOWUP_SCHEMA });
   return normalizeFollowUp(out);
 }
 
@@ -322,6 +322,6 @@ export async function geminiHandleConversation({ campaign, prospect, promptText,
     conversation: prospect.conversation || [],
     campaign_override: override || null,
   };
-  const out = await generate({ agent: "conversation", system: CONVERSATION_SYSTEM, input, schema: CONVERSATION_SCHEMA });
+  const out = await generate({ agent: "conversation", campaignId: campaign.id, system: CONVERSATION_SYSTEM, input, schema: CONVERSATION_SCHEMA });
   return normalizeConversation(out);
 }

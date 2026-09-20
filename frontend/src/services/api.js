@@ -86,6 +86,7 @@ export const getApproval = (id) => get(`/approvals/${id}`);
 export const getAgents = () => get("/agents");
 export const getAgent = (id) => get(`/agents/${id}`);
 export const getSettings = () => get("/settings");
+export const getComparison = (ids) => get(`/compare${ids && ids.length ? `?ids=${ids.join(",")}` : ""}`);
 
 // ---------------------------------------------------------------- campaign writes
 export const pauseCampaign = (id) => post(`/campaigns/${id}/pause`);

@@ -41,6 +41,8 @@ router.post("/campaigns/:id/launch", asyncRoute(async (req, res) => res.json(dat
 router.post("/campaigns/:id/complete", asyncRoute(async (req, res) => res.json(data.completeCampaign(req.params.id))));
 router.post("/campaigns/:id/archive", asyncRoute(async (req, res) => res.json(data.archiveCampaign(req.params.id))));
 
+router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
+
 // ---- prospects ---------------------------------------------------------------
 router.get("/prospects", asyncRoute(async (req, res) => res.json(data.getProspects())));
 router.get("/prospects/:id", asyncRoute(async (req, res) => res.json(data.getProspect(req.params.id))));

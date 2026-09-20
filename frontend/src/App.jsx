@@ -12,6 +12,7 @@ import Approvals from "./screens/Approvals.jsx";
 import AgentsPrompts from "./screens/AgentsPrompts.jsx";
 import Settings from "./screens/Settings.jsx";
 import ComingSoon from "./screens/ComingSoon.jsx";
+import Compare from "./screens/Compare.jsx";
 import Login from "./screens/Login.jsx";
 import { useSession } from "./hooks/useSession.js";
 
@@ -27,7 +28,7 @@ const SCREENS = {
   approvals: Approvals,
   agents: AgentsPrompts,
   knowledge: ComingSoon,
-  analytics: ComingSoon,
+  analytics: Compare,
   settings: Settings,
 };
 
