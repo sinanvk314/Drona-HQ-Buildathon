@@ -137,17 +137,34 @@ export function getCampaign(id) {
   };
 }
 
+const GEOGRAPHY_OPTIONS = ["United States", "Canada", "United Kingdom", "India"];
+const PERSONA_OPTIONS = ["Founder", "CEO", "Head of Product", "CTO", "VP Engineering", "CIO", "Head of Risk"];
+const union = (options, chosen) => [...options, ...chosen.filter((x) => !options.includes(x))];
+
+// The form values for a campaign, in the shape the create/edit form uses.
+function formValues(c) {
+  return {
+    name: c.name, description: c.description, owner: c.owner, objective: c.objective, icpText: c.icpText,
+    geographyOptions: union(GEOGRAPHY_OPTIONS, c.geography), geography: [...c.geography],
+    personaOptions: union(PERSONA_OPTIONS, c.personas), personas: [...c.personas],
+    companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: [...c.channels],
+    qualificationPrompt: c.qualificationPrompt, dailyLimit: c.dailyLimit, workingHours: c.workingHours,
+    approvals: { ...c.approvals }, sources: c.sources.map(sourceView),
+  };
+}
+
 export function getCampaignDefaults() {
   const s = getState();
   const c = s.campaigns.find((x) => x.id === "c_ai_founders") || s.campaigns[0];
-  return {
-    name: c.name, description: c.description, owner: c.owner, objective: c.objective, icpText: c.icpText,
-    geographyOptions: ["United States", "Canada", "United Kingdom", "India"],
-    geography: c.geography, personaOptions: ["Founder", "CEO", "Head of Product", "CTO", "VP Engineering", "CIO", "Head of Risk"],
-    personas: c.personas, companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: c.channels,
-    qualificationPrompt: c.qualificationPrompt, dailyLimit: c.dailyLimit, workingHours: c.workingHours,
-    approvals: { ...c.approvals, level: "manual" }, sources: c.sources.map((x) => ({ ...x })),
-  };
+  // A new campaign starts with a template's settings but at the safest approval level.
+  return { ...formValues(c), approvals: { ...c.approvals, level: "manual" }, sources: c.sources.map((x) => ({ ...x })) };
+}
+
+/** An existing campaign's settings, for the edit form. Knowledge sources are edited from the campaign page. */
+export function getCampaignConfig(id) {
+  const s = getState();
+  const c = campaignOf(s, id);
+  return { ...formValues(c), id: c.id, rawStatus: c.status };
 }
 
 export function getProspects() {
@@ -358,6 +375,64 @@ export function createCampaign(values, { launch = false } = {}) {
     });
     if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by JD` });
     return { id, status: launch ? "live" : "draft" };
+  });
+}
+
+export function updateCampaign(id, values = {}) {
+  return withState((s) => {
+    const c = campaignOf(s, id);
+    if (c.status === "completed" || c.status === "archived") throw new Error(`A ${c.status} campaign cannot be edited.`);
+    // A Draft only needs a name; a campaign that has been launched must stay fully valid.
+    const errors = validateCampaign(values, c.status !== "draft");
+    if (Object.keys(errors).length) {
+      const err = new Error("Please fix the highlighted fields.");
+      err.fields = errors;
+      throw err;
+    }
+    c.name = values.name.trim();
+    c.shortName = c.name;
+    c.description = (values.description || "").trim();
+    c.owner = (values.owner || "").trim() || c.owner;
+    c.objective = (values.objective || "").trim();
+    c.icpText = (values.icpText || "").trim();
+    c.geography = values.geography || [];
+    c.personas = values.personas || [];
+    c.companyCriteria = values.companyCriteria || "";
+    c.exclusionCriteria = values.exclusionCriteria || "";
+    c.channels = values.channels || [];
+    c.qualificationPrompt = (values.qualificationPrompt || "").trim();
+    c.dailyLimit = Number(values.dailyLimit) || 0;
+    c.workingHours = values.workingHours || "";
+    c.approvals = normalizeApprovals(values.approvals);
+    c.icpSummary = [c.personas.join(" & "), c.geography.join(", ")].filter(Boolean).join(" · ");
+    c.modifiedTs = Date.now();
+    addEvent(s, { campaignId: id, type: "edit", text: `**${c.name}** settings edited by JD (applies from the next agent run)`, featured: false });
+    return { id: c.id, status: c.status };
+  });
+}
+
+// A copy of a campaign as a new Draft: same targeting, knowledge, approval policy and per-campaign prompt
+// overrides, with no prospects or metrics. This is how a variant is made (change one thing, launch, compare).
+export function duplicateCampaign(id) {
+  return withState((s) => {
+    const src = campaignOf(s, id);
+    s.seq += 1;
+    const newId = `c_${s.seq}`;
+    const now = Date.now();
+    const name = `${src.name} (copy)`;
+    s.campaigns.push({
+      ...JSON.parse(JSON.stringify(src)),
+      id: newId, name, shortName: name, status: "draft",
+      sources: src.sources.map((x) => ({ ...x, id: `s${++s.seq}` })),
+      funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
+      responseRate: 0, createdTs: now, modifiedTs: now,
+    });
+    for (const agent of s.agents) {
+      const copies = agent.overrides.filter((o) => o.campaignId === id).map((o) => ({ ...o, campaignId: newId, ts: now }));
+      agent.overrides.push(...copies);
+    }
+    addEvent(s, { campaignId: newId, type: "edit", text: `**${name}** created as a copy of **${src.name}**`, featured: false });
+    return { id: newId, status: "draft" };
   });
 }
 

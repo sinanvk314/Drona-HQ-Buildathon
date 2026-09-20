@@ -97,6 +97,9 @@ All routes are mounted under `/api`. Request/response bodies mirror the frontend
 | GET | `/campaigns/defaults` | `getCampaignDefaults` |
 | POST | `/campaigns` `{values, launch}` | `createCampaign` |
 | GET | `/campaigns/:id` | `getCampaign` |
+| GET | `/campaigns/:id/config` | `getCampaignConfig` (settings for the edit form) |
+| PUT | `/campaigns/:id` `{values}` | `updateCampaign` (not for completed/archived) |
+| POST | `/campaigns/:id/duplicate` | `duplicateCampaign` (new Draft with the same setup) |
 | POST | `/campaigns/:id/sources` `{name, category, content}` | `addCampaignSource` |
 | DELETE | `/campaigns/:id/sources/:sourceId` | `removeCampaignSource` |
 | POST | `/campaigns/:id/pause` | `pauseCampaign` |

@@ -1,0 +1,55 @@
+// Campaign editing and duplication, run against the real service layer on a throwaway data file.
+import test from "node:test";
+import assert from "node:assert/strict";
+import os from "os";
+import path from "path";
+
+process.env.DATA_FILE = path.join(os.tmpdir(), `campaigns-test-${process.pid}.json`);
+process.env.USAGE_FILE = path.join(os.tmpdir(), `usage-campaigns-${process.pid}.json`);
+delete process.env.DATABASE_URL;
+const { initDb, getState } = await import("../src/db/index.js");
+const data = await import("../src/services/data.js");
+await initDb();
+
+test("editing a live campaign changes its settings and keeps its status and metrics", () => {
+  const before = data.getCampaign("c_us_saas");
+  const values = { ...data.getCampaignConfig("c_us_saas"), name: "US SaaS CTO (renamed)", dailyLimit: 25 };
+  data.updateCampaign("c_us_saas", values);
+  const after = data.getCampaign("c_us_saas");
+  assert.equal(after.name, "US SaaS CTO (renamed)");
+  assert.equal(after.rawStatus, "live");
+  assert.deepEqual(after.funnel, before.funnel);
+  assert.equal(getState().campaigns.find((c) => c.id === "c_us_saas").dailyLimit, 25);
+});
+
+test("an edit that leaves a launched campaign incomplete is rejected and changes nothing", () => {
+  const values = { ...data.getCampaignConfig("c_us_saas"), icpText: "" };
+  assert.throws(() => data.updateCampaign("c_us_saas", values), (e) => Boolean(e.fields && e.fields.icpText));
+  assert.notEqual(getState().campaigns.find((c) => c.id === "c_us_saas").icpText, "");
+});
+
+test("a completed campaign cannot be edited", () => {
+  data.completeCampaign("c_india_bfsi");
+  assert.throws(() => data.updateCampaign("c_india_bfsi", data.getCampaignConfig("c_india_bfsi")), /cannot be edited/);
+});
+
+test("duplicating makes an independent Draft with the same setup and no metrics", () => {
+  const src = getState().campaigns.find((c) => c.id === "c_ai_founders");
+  const { id, status } = data.duplicateCampaign("c_ai_founders");
+  assert.equal(status, "draft");
+  const copy = getState().campaigns.find((c) => c.id === id);
+  assert.equal(copy.name, `${src.name} (copy)`);
+  assert.deepEqual(copy.channels, src.channels);
+  assert.deepEqual(copy.approvals, src.approvals);
+  assert.equal(copy.funnel.discovered, 0);
+  assert.equal(copy.sources.length, src.sources.length);
+  assert.ok(copy.sources.every((x) => !src.sources.some((y) => y.id === x.id)), "copied sources get their own ids");
+
+  // Removing a source from the copy leaves the original alone.
+  data.removeCampaignSource(id, copy.sources[0].id);
+  assert.equal(getState().campaigns.find((c) => c.id === "c_ai_founders").sources.length, src.sources.length);
+
+  // The per-campaign prompt overrides come along, so the variant behaves the same until it is changed.
+  const overrides = getState().agents.flatMap((a) => a.overrides);
+  assert.equal(overrides.some((o) => o.campaignId === "c_ai_founders"), overrides.some((o) => o.campaignId === id));
+});
