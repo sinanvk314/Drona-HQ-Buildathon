@@ -375,3 +375,10 @@ test("typing a real address into a simulated campaign is flagged at launch, beca
   const review = data.getLaunchReview(id);
   assert.ok(review.checks.some((x) => x.key === "simulated-real" && x.status === "warn"));
 });
+
+test("the allow-list setting tolerates the slips people make: quotes, angle brackets, spaces, semicolons, capitals", async () => {
+  const { parseAllowlist } = await import("../src/config.js");
+  assert.deepEqual(parseAllowlist(' "Mohammed.Sinan@Gmail.com" ; <other@x.com>, \'+91 98765-43210\' '), ["mohammed.sinan@gmail.com", "other@x.com", "+919876543210"]);
+  assert.deepEqual(parseAllowlist(""), []);
+  assert.deepEqual(parseAllowlist(undefined), []);
+});

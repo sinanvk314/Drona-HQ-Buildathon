@@ -2,6 +2,15 @@
 // so the server runs with zero setup (`npm install && npm start`).
 import "dotenv/config";
 
+/** "a@x.com, <B@y.com>; '+91 98765 43210'" -> ["a@x.com", "b@y.com", "+919876543210"]: tolerant of the slips people make in an env setting. */
+export function parseAllowlist(raw) {
+  return String(raw || "")
+    .split(/[,;\n]+/)
+    .map((x) => x.trim().replace(/^["'<\s]+|["'>\s]+$/g, "").toLowerCase())
+    .map((x) => (x.includes("@") ? x : x.replace(/[\s()-]/g, "")))
+    .filter(Boolean);
+}
+
 export const config = {
   port: Number(process.env.PORT) || 8080,
   allowedOrigins: (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
@@ -76,7 +85,7 @@ export const config = {
   // Real messages to a real person always wait for a human, unless this is on.
   realAutoSend: process.env.REAL_AUTO_SEND === "on",
   // Optional safety net: when set, real messages go only to these addresses or numbers (comma-separated).
-  realAllowlist: String(process.env.REAL_SEND_ALLOWLIST || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+  realAllowlist: parseAllowlist(process.env.REAL_SEND_ALLOWLIST),
   // The public address of this deployment (no trailing slash): Twilio calls back to it for replies and calls.
   publicUrl: String(process.env.PUBLIC_URL || "").replace(/\/+$/, ""),
   gmail: {
