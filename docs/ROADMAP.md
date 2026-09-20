@@ -40,12 +40,14 @@ Today nothing leaves the server: sends and replies are simulated, and prospects 
   are allowed to use, or keep LinkedIn as a *task for a human* (the agent drafts, the rep sends manually). Decide before building.
 
 ### 1.4 Real prospect discovery (M)
+- **Done:** an imitated people search (Gemini acts as a search tool and returns realistic fictional people for any audience) and one-person campaigns with details typed in. **Not done:** a real provider. Everything from `sourceProspects` onward already handles the candidate shape, so an Apollo/LinkedIn adapter only has to return it. Real candidates must carry `real: true` so the UI stops labelling them simulated.
 - **What:** replace the synthetic generator with real companies and people.
 - **How:** an Apollo (or similar) API adapter, and/or a **CSV import** so the team can load real leads.
 - **Where to start:** `services/prospectGenerator.js` is the only place prospects are created; keep its return shape. Add a CSV upload endpoint (`routes/index.js`, `data.js`) and a button on the campaign page. Remove the random funnel bumps in `runLeadResearch`.
 
-### 1.5 Booking a meeting for real (S to M)
-- Today a meeting is a state change. Add: propose times from the rep's calendar (Google Calendar API), send an `.ics` invite, store the meeting on the prospect, and produce the `opportunity` stage (which only seeded data reaches now).
+### 1.5 Booking a meeting into a live calendar (S to M)
+- **Done:** real times inside the rep's hours, reading the reply, booking without double-booking, and a downloadable `.ics` invite (`services/meetings.js`). **Not done:** reading the rep's real free/busy time and writing to their calendar. Today the only busy time the SDR knows is the meetings it booked itself.
+- Original note: today a meeting is a state change. Add: propose times from the rep's calendar (Google Calendar API), send an `.ics` invite, store the meeting on the prospect, and produce the `opportunity` stage (which only seeded data reaches now).
 - **Where to start:** the `meeting` branch in `runConversation` (`scheduler.js`) and `decideApproval` in `data.js`.
 
 ### 1.6 CRM sync (M)
@@ -61,7 +63,8 @@ Today nothing leaves the server: sends and replies are simulated, and prospects 
 - **Where to start:** the `voice` agent already exists in the seed (switched off). Add a schema and prompt in `geminiEngine.js`, a
   function in `agentEngine/index.js`, and let the Strategy agent's plan use `voice` as the last touch (it already can).
 
-### 2.2 Lead Research as a real agent (M)
+### 2.2 Lead Research: search and citations (M)
+- **Done:** a Research agent that turns the known facts into a brief (facts, reasons to reach out, gaps) in the dossier, and never invents. **Not done:** it does not search the web, so it only knows what was sourced or entered. Add a search tool and store citations.
 - **What:** given a company and person, produce structured, cited research (funding, hiring, tech, recent news) into the dossier.
 - **How:** Gemini with Google Search grounding, or another search API, with a schema for the result and source links.
 - **Where to start:** `ruleEnrich` in `ruleEngine.js` is today's stand-in. Add a `researchProspect` function next to `scoreICP` in `agentEngine/index.js`, and store citations in `prospect.evidence`.
@@ -118,6 +121,9 @@ Today nothing leaves the server: sends and replies are simulated, and prospects 
 
 ## 5. Product features
 
+- **AI-suggested prompt changes (M):** when a campaign is flagged as struggling, ask a model to propose a revised brief from the rejection reasons and the lowest-performing conversations, shown as a diff to accept or discard.
+- **Prompt experiments (M):** run two brief versions side by side on split traffic and report significance. Today the analytics compare versions over time.
+- **Sandbox transcripts (S):** export a judge-sandbox run as a report for the demo.
 - **Analytics over time (M):** charts of funnel, reply rate and cost by day and by campaign. Needs stored daily snapshots (`usage.js` keeps only today).
 - **Experiment statistics (M):** significance for a campaign against its variant (the Compare screen shows numbers, not confidence).
 - **Notifications (S):** email or Slack when an escalation arrives or a campaign has no active rep.

@@ -26,6 +26,7 @@ Contents
 19. [Recipes: how to add things](#19-recipes-how-to-add-things)
 20. [Decisions and gotchas](#20-decisions-and-gotchas)
 21. [What is simulated and what is real](#21-what-is-simulated-and-what-is-real)
+22. [How a campaign, a person and a meeting fit together](#22-how-a-campaign-a-person-and-a-meeting-fit-together)
 
 ---
 
@@ -321,7 +322,14 @@ The frontend has no copy of this data; it only calls the API.
 | `src/services/usage.js` | LLM call counting, the daily cap, tokens, cost estimates. |
 | `src/services/auth.js` | Sign-in, tokens, and "who did this". |
 | `src/services/logic.js`, `constants.js` | Campaign lifecycle rules and shared constants (stage names, channel keys). |
-| `src/services/prospectGenerator.js` | Creates the synthetic prospects. |
+| `src/services/prospectGenerator.js` | Creates the synthetic prospects (the free generator). |
+| `src/services/prospects.js` | `newProspect`: the one factory for a prospect (people at organisations, free-form attributes, where they came from). |
+| `src/services/dossier.js` | The shared Prospect Dossier: facts, hand-off notes, hooks and gaps. |
+| `src/services/sdrSteps.js` | The SDR defined once: the pipeline steps in order, with purpose, reads and writes. The scheduler and the Blueprint screen both use it. |
+| `src/services/meetings.js` | Offering real meeting times, reading the answer, booking, and the `.ics` invite. |
+| `src/services/dev.js` | The Dev tab: judge sandbox, search playground, real-data tests, runtime view. |
+| `src/services/performance.js` | Agent success rates by campaign and prompt version, and the campaign health verdict. |
+| `src/services/knowledge.js` | The knowledge library across campaigns and the retrieval tester. |
 | `src/utils/*` | Validation and formatting helpers. |
 | `data/knowledge/` | The knowledge documents and `reply-examples.json`. |
 | `eval/` | The golden set for ICP scoring and the runner. |
@@ -342,7 +350,9 @@ the running app.** Its reply routing and retrieval were re-built inside the Node
 | `src/services/api.js` | **Every** call to the backend, one exported function each. Add new calls here. |
 | `src/services/session.js`, `hooks/useSession.js` | The signed-in session. |
 | `src/hooks/useApi.js` | Loads data and refreshes it after any write and every 30 seconds. |
-| `src/screens/` | Login, CommandCenter (also used for the Campaigns list), CampaignDetail, CreateCampaign (also edits), Approvals, DecisionJournal, Prospects, ProspectDetail, AgentsPrompts, Reps, Compare, Settings. |
+| `src/screens/` | Login, CommandCenter (also used for the Campaigns list), CampaignDetail, CreateCampaign (also edits), Approvals, DecisionJournal, Prospects, ProspectDetail, AgentsPrompts, Knowledge, Reps, Compare (analytics), Dev, Settings. |
+| `src/components/dev/` | The four Dev tabs: judge sandbox, search playground, real-data tests, runtime. |
+| `src/components/analytics/` | Campaign health and per-agent success by prompt version. |
 | `src/components/shell/` | Sidebar, top bar (with the kill switch), page frame. |
 | `src/components/campaign/` | The panels on a campaign page: knowledge, prompts, agents, reps, activity, launch review, prompt diff. |
 | `src/components/features/`, `ui/` | Reusable pieces: campaign cards, efficiency panel, tables, badges, modals, toggles. |
@@ -425,11 +435,25 @@ without `.txt`) to the campaign in the seed, or paste it on the campaign page.
 
 | Real | Simulated |
 |---|---|
-| Gemini decisions, strict JSON output, retries, quota fallback | Prospect discovery (synthetic companies) |
+| Gemini decisions, strict JSON output, retries, quota fallback | Prospect discovery (an AI imitating a people search, or made-up companies) |
 | Local embeddings, retrieval, reply routing | Sending email, LinkedIn or SMS (state changes only) |
 | Campaign lifecycle, pause, agent and channel pause, kill switch | Replies (a fixed mix of sample messages) |
-| Conflict, suppression, working hours, daily limits, reps | Meeting booking (a state change, no calendar) |
+| Conflict, suppression, working hours, daily limits, reps | Calendar (a booked meeting is a record and an `.ics` file, not a live calendar entry) |
 | Approvals, approval levels, grounding check | The `opportunity` stage (only seeded data reaches it) |
 | Prompt versions, pins, roll-back, change log | Voice calls (not built) |
 | Decision Journal, cost and token tracking, evaluation | |
 | Sign-in, storage in JSON or Postgres, one-service deploy | |
+
+## 22. How a campaign, a person and a meeting fit together
+
+**Two kinds of campaign.** A campaign is either aimed at *an audience* (`mode: "bulk"`: the SDR finds people matching an ICP, judges who qualifies and works each) or at *one specific person* (`mode: "single"`: the person is entered by hand and becomes the campaign's only prospect; there is no ICP to score, so the ICP step qualifies them by policy). Both use the same pipeline.
+
+**Where prospects come from.** `sourcing: "simulated-search"` asks Gemini to act as a people-search tool and return realistic *fictional* people for any audience (student leaders, founders, anyone); `"synthetic"` is the free made-up-company generator. Both are clearly marked as simulated on each prospect (`source: { provider, real, note }`). A real provider only has to return the same candidate shape (see `normalizeCandidates` in `geminiEngine.js`) and be called from `runDiscovery` in `scheduler.js`.
+
+**One shared memory.** Every agent reads the whole dossier (`dossierFor`) and leaves a hand-off note (`addNote`). The note also records the prompt version the agent ran with (its *harness*, for example `v1.2 + campaign prompt v3`), which is how `performance.js` can say which prompt handled which prospect.
+
+**Meetings.** On an interested reply, `processReply` (`scheduler.js`) asks `proposeSlots` for up to three free times on different weekdays inside the rep's hours, offers exactly those, and reads the answer with `resolveMeetingReply` (Gemini, with a rule fallback, `readReplyRule`). A pick books the slot (`bookMeeting`), a decline closes it, and a counter-offer gets other times once before a human is asked. If the campaign requires approval for meeting times, the times wait in the Approvals queue first. The invite is built by `buildIcs` and downloaded from `/api/prospects/:id/meeting.ics`.
+
+**Sandboxes.** A Dev-tab test run is a real campaign with `sandbox: true`, one prospect flagged `sandboxHuman` (so the simulated reply generator never answers for the person), and it ignores the simulated clock's working hours because a person is testing in real time. Sandboxes are filtered out of the dashboard, approvals, journal and comparisons by `isSandbox` in `data.js`.
+
+**Measuring prompts.** `performance.js` defines what success means for each agent (for example: personalisation succeeds when the opening message gets a reply; conversation when a reply ends in a meeting) and splits it by campaign, agent prompt version and campaign prompt version. `health()` turns a campaign's numbers into a verdict (`new`, `healthy`, `watch`, `struggling`) with reasons and a suggestion. Small samples move a lot, so the screen says so. Saving a campaign prompt requires a message; `inspectPrompt` rebuilds the prompt an agent ran with from a harness label (library and campaign prompt versions are never overwritten; a campaign's extra instruction is shown as it is today).

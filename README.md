@@ -237,6 +237,8 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `SIM_MS_PER_HOUR` | `3000` | Real milliseconds per simulated hour (follow-up waits, working hours, daily limit). `3600000` = real time |
 | `ENFORCE_LIMITS` | `on` | `off` stops working hours, the daily limit and the frequency cap from holding outreach back |
 | `SIM_REPLY_CHANCE` | `0.08` | Chance per tick that a contacted prospect replies (replies are simulated) |
+| `MEETING_TIMEZONE` | `Asia/Kolkata` | Time zone in which meeting times are offered and shown |
+| `MEETING_MINUTES` | `30` | Length of a booked meeting |
 | `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives (point at a persistent disk when deploying) |
 | `USAGE_FILE` | `./data/usage.json` | Where the LLM call counters live |
 | `EMBEDDING_CACHE_DIR` | `./data/.embedding-cache` | Where the embedding model is cached |
@@ -368,6 +370,17 @@ Gemini 16/16 (100%). The rule engine's misses are the cases that need judgment, 
 go to the LLM. Caveats: the set is small and was labelled by us, so treat 100% as "no regressions on known cases", not
 as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 
+### Trying it as a person: the Dev tab
+
+Open **Dev** in the sidebar. It has four tools, none of which touch your real campaigns (a test run never appears in the dashboard, approvals or journal):
+
+- **Judge sandbox.** Enter a real person (name, role, organisation, what is known about them), what the SDR should achieve and what is being offered. Press **Run the SDR**: it researches them, plans and writes the first message. Then *you* play that person: type replies in your own words. Ask a question, ask for another time, or say no. The SDR offers real times inside the rep's working hours, reads which one you pick, books it and produces a calendar invite (`.ics`). A scorecard says whether a meeting was booked, whether it respected the rep's hours and whether anything unsupported was said, and you can rate the run.
+- **Search playground.** Try the imitated people search on any audience (for example student leaders at law colleges) and judge how believable the results are. Nothing is saved.
+- **Real-data tests.** Enter real people with the answer you expect (should they qualify?), pick a campaign and see how often its ICP agent agrees.
+- **Runtime.** What is in force on the server right now: engines, key, daily cap, clock, time zone.
+
+A campaign can also be aimed at **one specific person** instead of an audience (choose it at the top of the New Campaign form): the SDR works only on that person until they answer or a meeting is booked.
+
 ## 11. What works, what is simulated, known limitations
 
 **Works end to end**
@@ -381,14 +394,19 @@ as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 - Representatives with assignment, sender identity, per-rep limits and hours, offboarding and reassignment.
 - Sign-in, a pre-launch review, per-campaign agent pause, and a campaign dashboard with agent activity, failed workflows, reply outcomes and conversion rates.
 - Prompt versioning with per-campaign pinning, a versioned campaign system prompt, side-by-side compare and roll-back, and a change log; the versions in force are recorded on every decision.
+- **One SDR, not seven bots:** a shared Prospect Dossier every agent reads and writes, a real Research agent, and an SDR Blueprint on each campaign page showing the whole pipeline.
+- **Meetings for real:** the SDR offers real times inside the rep's hours, understands the reply (a pick, a decline or a counter-offer), books the slot without double-booking the rep, and produces a calendar invite.
+- **One-person campaigns** and the **Dev tab** (above): a real person can play the prospect and see whether the SDR books a meeting.
+- **Analytics that explain the prompts:** each campaign gets a health verdict with what to try, and each agent's success rate is split by campaign and by the prompt version it ran with. Saving a campaign prompt needs a message (like a commit message), and any decision's exact prompt versions can be opened.
+- **Knowledge library** across campaigns with a retrieval tester, and an Agents page that shows each agent's role, fixed instruction and the prompt it would receive for a campaign.
 - Approval levels, cross-campaign conflict detection, a global suppression list, cost cap and an efficiency panel.
 - Measurement: tokens, latency and cost per prospect / qualified lead / conversation on the dashboard, and a golden-set evaluation.
 - Failure handling: bad or empty model output, HTTP errors and quota exhaustion fall back to the rule engine without stopping the loop.
 
 **Simulated (no real network calls)**
-- Prospect discovery generates synthetic companies (stand-in for Apollo).
+- Prospect discovery is an AI acting as a people-search tool (it invents realistic, fictional people for any audience, with `.example` emails) or a free generator of made-up companies. Real providers (Apollo and similar) are on the roadmap.
 - Sending email / LinkedIn / SMS and receiving replies change state only; replies are generated from a fixed mix of
-  sample messages. Meeting booking is a state change, not a calendar invite.
+  sample messages (in the Dev sandbox a real person types them). A booked meeting is a record and a downloadable `.ics` invite, not an entry in a live calendar.
 - The Voice SDR agent is not built.
 
 **DronaHQ.** The control-plane UI was built in DronaHQ Studio. The backend also contains an adapter for DronaHQ agents
