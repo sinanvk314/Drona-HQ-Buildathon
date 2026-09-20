@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/dronahqEngine.test.js test/geminiEngine.test.js test/costControl.test.js test/storage.test.js test/campaigns.test.js",
+    "test": "node --test test/dronahqEngine.test.js test/geminiEngine.test.js test/costControl.test.js test/storage.test.js test/campaigns.test.js test/goldenIcp.test.js",
     "reset-data": "node -e \"import('./src/db/index.js').then(m => m.resetState()).then(() => { console.log('State reset to seed.'); process.exit(0); })\""
   },
   "dependencies": {

@@ -296,7 +296,16 @@ npm test                       # unit tests (the first run downloads the embeddi
 node scripts/gemini-models.mjs # which Gemini models your key can use
 node scripts/try-icp.mjs       # ICP scoring on 4 sample prospects (add "gemini" to use the real model)
 node scripts/try-agents.mjs    # personalisation + conversation samples
+node scripts/eval-icp.mjs      # score ICP fitment on the golden set (rule engine; add "gemini" for the LLM)
+node scripts/smoke.mjs <url>   # check a running deployment, incl. that pausing one campaign stops only that one
 ```
+
+**Evaluation.** `backend/eval/icp-golden.json` holds 19 hand-labelled prospects (16 scored, 3 borderline that are
+reported but not scored) across the three campaigns, covering strong fits, wrong role, wrong size, wrong industry,
+wrong region and a competitor named only in the research notes. Results on our last run: the rule engine 12/16 (75%),
+Gemini 16/16 (100%). The rule engine's misses are the cases that need judgment, which is the reason qualifications
+go to the LLM. Caveats: the set is small and was labelled by us, so treat 100% as "no regressions on known cases", not
+as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 
 ## 11. What works, what is simulated, known limitations
 
@@ -308,6 +317,7 @@ node scripts/try-agents.mjs    # personalisation + conversation samples
 - Edit a campaign after creation, and duplicate one into a new Draft to build a variant.
 - Prompt versioning per agent (save, activate an older version), with the active version recorded on each decision.
 - Approval levels, cross-campaign conflict detection, a global suppression list, cost cap and an efficiency panel.
+- Measurement: tokens, latency and cost per prospect / qualified lead / conversation on the dashboard, and a golden-set evaluation.
 - Failure handling: bad or empty model output, HTTP errors and quota exhaustion fall back to the rule engine without stopping the loop.
 
 **Simulated (no real network calls)**

@@ -1,0 +1,214 @@
+{
+  "about": "Golden set for the ICP Fitment agent. Each case is a prospect a Lead Research agent might hand over, judged against one of the three seeded campaigns. `expect` is the call a careful human SDR would make from the facts given. Cases with expect=null are borderline: they are reported but not scored. Research notes go in `history`, which is how the agent sees hiring and funding signals.",
+  "cases": [
+    {
+      "id": "saas-01-strong",
+      "campaign": "c_us_saas",
+      "expect": "Qualified",
+      "why": "CTO, 240 employees, hiring a FinOps role, recent raise",
+      "prospect": {
+        "name": "Dana Priest", "title": "CTO", "email": "dana@fleetwise.io", "company": "Fleetwise", "industry": "SaaS",
+        "size": "240 employees", "funding": "Series C, $65M raised", "tech": ["AWS", "Kubernetes", "Grafana"], "city": "Austin, TX",
+        "history": [{ "kind": "chat", "text": "Research: hiring a Cloud FinOps Engineer" }, { "kind": "chat", "text": "Research: raised a Series C in the last 8 months" }]
+      }
+    },
+    {
+      "id": "saas-02-strong",
+      "campaign": "c_us_saas",
+      "expect": "Qualified",
+      "why": "VP Engineering, 120 employees, hiring platform engineers",
+      "prospect": {
+        "name": "Marcus Lee", "title": "VP Engineering", "email": "marcus@acmecloud.com", "company": "Acme Cloud", "industry": "SaaS",
+        "size": "120 employees", "funding": "Series B, $30M raised", "tech": ["GCP", "Kubernetes"], "city": "Denver, CO",
+        "history": [{ "kind": "chat", "text": "Research: hiring two Platform Engineers" }]
+      }
+    },
+    {
+      "id": "saas-03-wrong-persona",
+      "campaign": "c_us_saas",
+      "expect": "Rejected",
+      "why": "Marketing manager is not a target persona",
+      "prospect": {
+        "name": "Ravi Patel", "title": "Marketing Manager", "email": "ravi@brightloop.com", "company": "Brightloop", "industry": "SaaS",
+        "size": "200 employees", "funding": "Series A, $12M raised", "tech": ["AWS"], "city": "Seattle, WA",
+        "history": [{ "kind": "chat", "text": "Research: runs demand generation" }]
+      }
+    },
+    {
+      "id": "saas-04-too-small",
+      "campaign": "c_us_saas",
+      "expect": "Rejected",
+      "why": "4 employees, far below the 50-500 range, no signals",
+      "prospect": {
+        "name": "Sara Novak", "title": "CTO", "email": "sara@tinyapp.io", "company": "TinyApp", "industry": "SaaS",
+        "size": "4 employees", "funding": "Pre-seed", "tech": ["AWS"], "city": "New York, NY",
+        "history": [{ "kind": "chat", "text": "Research: two-person side project, no engineering hires" }]
+      }
+    },
+    {
+      "id": "saas-05-too-large",
+      "campaign": "c_us_saas",
+      "expect": "Rejected",
+      "why": "2,800 employees is far above the 50-500 range",
+      "prospect": {
+        "name": "Omar Diaz", "title": "CTO", "email": "omar@megacorp.com", "company": "MegaCorp Software", "industry": "SaaS",
+        "size": "2800 employees", "funding": "Public company", "tech": ["AWS", "Azure"], "city": "Seattle, WA",
+        "history": [{ "kind": "chat", "text": "Research: large public enterprise with a dedicated FinOps team" }]
+      }
+    },
+    {
+      "id": "saas-06-competitor",
+      "campaign": "c_us_saas",
+      "expect": "Rejected",
+      "why": "Right size and persona, but the research says the company is a competitor (an exclusion)",
+      "prospect": {
+        "name": "Elena Fischer", "title": "CTO", "email": "elena@costwise.io", "company": "Costwise", "industry": "SaaS",
+        "size": "150 employees", "funding": "Series B, $28M raised", "tech": ["AWS", "Kubernetes"], "city": "Denver, CO",
+        "history": [{ "kind": "chat", "text": "Research: Costwise sells a competing cloud cost management product" }, { "kind": "chat", "text": "Research: hiring platform engineers" }]
+      }
+    },
+    {
+      "id": "bfsi-01-strong",
+      "campaign": "c_india_bfsi",
+      "expect": "Qualified",
+      "why": "CIO of an RBI-regulated NBFC with 1,800 employees",
+      "prospect": {
+        "name": "Ananya Rao", "title": "CIO", "email": "ananya@kaverifinserv.in", "company": "Kaveri Finserv", "industry": "NBFC",
+        "size": "1800 employees", "funding": "Privately held, RBI-registered NBFC", "tech": ["AWS Mumbai", "Datadog"], "city": "Mumbai, IN",
+        "history": [{ "kind": "chat", "text": "Research: RBI-regulated lender, announced a cloud migration for its lending platform" }]
+      }
+    },
+    {
+      "id": "bfsi-02-strong",
+      "campaign": "c_india_bfsi",
+      "expect": "Qualified",
+      "why": "Head of Risk at a large insurer, owns technology risk decisions",
+      "prospect": {
+        "name": "Vikram Iyer", "title": "Head of Risk", "email": "vikram@suraksha-life.in", "company": "Suraksha Life", "industry": "Insurance",
+        "size": "6000 employees", "funding": "IRDAI-regulated insurer", "tech": ["Azure", "GCP"], "city": "Pune, IN",
+        "history": [{ "kind": "chat", "text": "Research: insurer under IRDAI regulation, recently hired a cloud security lead" }]
+      }
+    },
+    {
+      "id": "bfsi-03-wrong-persona",
+      "campaign": "c_india_bfsi",
+      "expect": "Rejected",
+      "why": "Head of marketing at a bank does not own technology or risk",
+      "prospect": {
+        "name": "Priya Sharma", "title": "Head of Marketing", "email": "priya@northbank.in", "company": "North Bank", "industry": "Banking",
+        "size": "3000 employees", "funding": "RBI-regulated bank", "tech": ["AWS"], "city": "Mumbai, IN",
+        "history": [{ "kind": "chat", "text": "Research: leads brand and campaigns" }]
+      }
+    },
+    {
+      "id": "bfsi-04-not-regulated",
+      "campaign": "c_india_bfsi",
+      "expect": "Rejected",
+      "why": "A 40-person software startup is not a regulated BFSI entity",
+      "prospect": {
+        "name": "Ravi Nair", "title": "CIO", "email": "ravi@appforge.in", "company": "AppForge", "industry": "SaaS",
+        "size": "40 employees", "funding": "Seed", "tech": ["GCP"], "city": "Bengaluru, IN",
+        "history": [{ "kind": "chat", "text": "Research: builds mobile apps for retail clients, no regulatory status" }]
+      }
+    },
+    {
+      "id": "bfsi-05-wrong-geo",
+      "campaign": "c_india_bfsi",
+      "expect": "Rejected",
+      "why": "A US regional bank is outside the India-focused campaign",
+      "prospect": {
+        "name": "Jordan Kim", "title": "CIO", "email": "jordan@lakeshorebank.com", "company": "Lakeshore Bank", "industry": "Banking",
+        "size": "900 employees", "funding": "US-regulated bank", "tech": ["Azure"], "city": "Columbus, OH",
+        "history": [{ "kind": "chat", "text": "Research: regional US bank regulated by the OCC and FDIC" }]
+      }
+    },
+    {
+      "id": "founder-01-strong",
+      "campaign": "c_ai_founders",
+      "expect": "Qualified",
+      "why": "Founder of a voice AI startup, 18 people, raised a seed round 3 months ago, hiring ML infra",
+      "prospect": {
+        "name": "Noah Lund", "title": "Founder", "email": "noah@voxwell.ai", "company": "Voxwell", "industry": "Voice AI",
+        "size": "18 employees", "funding": "Seed, $3M raised 3 months ago", "tech": ["AWS", "Kubernetes"], "city": "Austin, TX",
+        "history": [{ "kind": "chat", "text": "Research: hiring an ML Infrastructure Engineer" }, { "kind": "chat", "text": "Research: builds voice agents for call centers" }]
+      }
+    },
+    {
+      "id": "founder-02-strong",
+      "campaign": "c_ai_founders",
+      "expect": "Qualified",
+      "why": "CEO of a conversational AI company, 45 people, Series A raised last quarter",
+      "prospect": {
+        "name": "Chen Okoye", "title": "CEO", "email": "chen@talkloop.ai", "company": "Talkloop", "industry": "Conversational AI",
+        "size": "45 employees", "funding": "Series A, $14M raised 4 months ago", "tech": ["GCP", "Kubernetes"], "city": "New York, NY",
+        "history": [{ "kind": "chat", "text": "Research: conversational AI for customer support" }]
+      }
+    },
+    {
+      "id": "founder-03-too-large",
+      "campaign": "c_ai_founders",
+      "expect": "Rejected",
+      "why": "400 employees and a Series D is not an early-stage startup",
+      "prospect": {
+        "name": "Alex Silva", "title": "Founder", "email": "alex@bigvoice.ai", "company": "BigVoice", "industry": "Voice AI",
+        "size": "400 employees", "funding": "Series D, $180M raised", "tech": ["AWS", "Azure"], "city": "San Francisco, CA",
+        "history": [{ "kind": "chat", "text": "Research: late-stage voice AI company with a large platform team" }]
+      }
+    },
+    {
+      "id": "founder-04-wrong-persona",
+      "campaign": "c_ai_founders",
+      "expect": "Rejected",
+      "why": "A head of sales is not a Founder or CEO",
+      "prospect": {
+        "name": "Maria Diaz", "title": "Head of Sales", "email": "maria@callwave.ai", "company": "Callwave", "industry": "Voice AI",
+        "size": "20 employees", "funding": "Seed, $2M raised", "tech": ["AWS"], "city": "Denver, CO",
+        "history": [{ "kind": "chat", "text": "Research: leads outbound sales" }]
+      }
+    },
+    {
+      "id": "founder-05-not-ai",
+      "campaign": "c_ai_founders",
+      "expect": "Rejected",
+      "why": "A food delivery company is not a voice or conversational AI startup",
+      "prospect": {
+        "name": "Jonas Berg", "title": "Founder", "email": "jonas@snackdash.com", "company": "SnackDash", "industry": "Food delivery",
+        "size": "10 employees", "funding": "Seed, $1M raised", "tech": ["AWS"], "city": "Seattle, WA",
+        "history": [{ "kind": "chat", "text": "Research: local snack delivery app, no AI product" }]
+      }
+    },
+    {
+      "id": "border-01-slightly-small",
+      "campaign": "c_us_saas",
+      "expect": null,
+      "why": "Borderline: 30 employees is under the 50 minimum, but strong buying signals",
+      "prospect": {
+        "name": "Leah Ortiz", "title": "CTO", "email": "leah@byteform.io", "company": "Byteform", "industry": "SaaS",
+        "size": "30 employees", "funding": "Series A, $10M raised last month", "tech": ["AWS", "Kubernetes"], "city": "Denver, CO",
+        "history": [{ "kind": "chat", "text": "Research: hiring a Platform Engineer" }]
+      }
+    },
+    {
+      "id": "border-02-slightly-large",
+      "campaign": "c_us_saas",
+      "expect": null,
+      "why": "Borderline: 600 employees is just over the 500 maximum, with a FinOps hire",
+      "prospect": {
+        "name": "Priya Iyer", "title": "VP Engineering", "email": "priya@datalane.com", "company": "Datalane", "industry": "SaaS",
+        "size": "600 employees", "funding": "Series C, $80M raised", "tech": ["AWS", "Kubernetes"], "city": "Austin, TX",
+        "history": [{ "kind": "chat", "text": "Research: hiring a Cloud FinOps Lead" }]
+      }
+    },
+    {
+      "id": "border-03-missing-data",
+      "campaign": "c_ai_founders",
+      "expect": null,
+      "why": "Borderline: right title at a voice AI company, but size and funding are unknown",
+      "prospect": {
+        "name": "Sana Khan", "title": "CEO", "email": "sana@echomind.ai", "company": "Echomind", "industry": "Voice AI",
+        "size": "", "funding": "", "tech": [], "city": "Austin, TX",
+        "history": [{ "kind": "chat", "text": "Research: early-stage voice AI company, little public information" }]
+      }
+    }
+  ]
+}

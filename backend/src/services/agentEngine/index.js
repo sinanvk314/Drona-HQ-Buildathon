@@ -58,7 +58,10 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   // are settled here. A qualification starts real outreach, so it always gets the LLM's read.
   const ruleResult = rule.ruleScoreICP({ campaign, prospect });
   const margin = config.icpShortcutMargin;
-  const clearCut = margin > 0 && !ruleResult.qualified && ruleResult.score <= ruleResult.threshold - margin;
+  // ...and only when the research notes hold no buying signal that could outweigh a weak profile (the rule
+  // engine reads the profile fields, not the notes, so a small company that is hiring must reach the LLM).
+  const hasBuyingSignal = (prospect.history || []).some((h) => /hiring|raised|announced|migrat|launch/i.test(h.text || ""));
+  const clearCut = margin > 0 && !ruleResult.qualified && ruleResult.score <= ruleResult.threshold - margin && !hasBuyingSignal;
   if (clearCut) {
     recordAvoided("icpShortcut");
     return {
