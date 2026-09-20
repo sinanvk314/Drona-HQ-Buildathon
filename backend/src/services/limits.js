@@ -32,7 +32,8 @@ export function recentTouchesTo(state, prospect, now = Date.now()) {
 
 /** -> { ok, reason }. `reason` is written into the Decision Journal and shown on the campaign. */
 export function outreachAllowed(state, campaign, prospect, now = Date.now(), channel = null) {
-  if (!config.enforceLimits) return { ok: true };
+  // A sandbox is a person testing the SDR in real time: the simulated clock's working hours and limits would only get in the way.
+  if (!config.enforceLimits || campaign.sandbox) return { ok: true };
   if (!withinWorkingHours(campaign, now)) {
     return { ok: false, reason: `Outside working hours (simulated time ${simClockLabel(now)}; window ${campaign.workingHours})` };
   }

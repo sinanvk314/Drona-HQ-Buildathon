@@ -31,7 +31,7 @@ export function repBlocker(state, rep, channel, now = Date.now()) {
  */
 export function pickRep(state, campaign, channel, { now = Date.now(), preferId = null, strict = true } = {}) {
   const reps = assignedReps(state, campaign);
-  const usable = reps.filter((r) => (strict ? !repBlocker(state, r, channel, now) : r.status === "active"));
+  const usable = reps.filter((r) => (strict && !campaign.sandbox ? !repBlocker(state, r, channel, now) : r.status === "active"));
   if (!usable.length) return null;
   const preferred = usable.find((r) => r.id === preferId);
   if (preferred) return preferred;

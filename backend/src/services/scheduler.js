@@ -3,6 +3,7 @@
 // counters at random, this drives real, per-prospect agent calls that each write a real Decision
 // Journal entry, respecting every guardrail: global kill switch, campaign Live/Paused state,
 // per-agent enable/disable, per-channel enable/disable, and cross-campaign conflict detection.
+import { greetingName } from "./agentEngine/ruleEngine.js";
 import { getState, persistState } from "../db/index.js";
 import { addEvent, isRunning } from "./logic.js";
 import { config } from "../config.js";
@@ -186,7 +187,7 @@ async function runIcpFitment(s, campaign) {
       if (campaign.mode === "single") {
         // The ICP is this one named person: nothing to score.
         prospect.fit = 100;
-        prospect.reasons = ["Named target of this campaign"];
+        prospect.reasons = [];
         prospect.qual = { status: "Qualified", reasoning: "Named target: this campaign is aimed at exactly this person, so there is no fit to score.", agent: "ICP Fitment Agent", harness: "policy", ts: Date.now() };
         prospect.stage = "qualified";
         prospect.lastAction = "Qualified (named target), {ago}";
@@ -539,7 +540,7 @@ function escalate(s, campaign, prospect, { channel, title, body, draft, reasonin
 // hand a request the SDR cannot meet to a human.
 async function answerProposal(s, campaign, prospect, { text, channel, conversationAgent }) {
   const m = prospect.meeting;
-  const first = (prospect.name || "there").split(" ")[0];
+  const first = greetingName(prospect.name);
   const pick = await engine.resolveMeetingReply({ campaign, prospect, slots: m.slots, replyText: text, conversationAgent });
   countOutcome(campaign, pick.declined ? "negative" : pick.choice >= 0 ? "positive" : "neutral");
   addNote(prospect, { agent: "Conversation Agent", harness: pick.harness, engine: pick.engine, note: `Answer to the proposed times: ${pick.choice >= 0 ? `accepted ${m.slots[pick.choice].label}` : pick.declined ? "declined" : pick.alternative ? `asked for "${pick.alternative}"` : "unclear"}. ${pick.reasoning}` });
@@ -660,7 +661,7 @@ export async function processReply(s, campaign, prospect, { text, channel, kind 
         escalate(s, campaign, prospect, { channel, title: "No free meeting time", body: "The prospect wants to meet but no free time was found.", draft: result.draft, reasoning: result.reasoning, harness: result.harness, warnings });
         return { handled: "escalated" };
       }
-      const body = `${(result.draft || `Thanks, ${prospect.name.split(" ")[0]}. I would be glad to set up a call.`).trim()}\n\nWould any of these work?\n${slotsText(slots)}`;
+      const body = `${(result.draft || `Thanks, ${greetingName(prospect.name)}. I would be glad to set up a call.`).trim()}\n\nWould any of these work?\n${slotsText(slots)}`;
       const meeting = { status: "proposed", slots, rounds: 1, repId: rep ? rep.id : null, channel, proposedTs: Date.now(), clarifications: 0 };
       if (sendsItself(s, campaign, prospect, "meeting", result.grounding.ok)) {
         prospect.meeting = meeting;

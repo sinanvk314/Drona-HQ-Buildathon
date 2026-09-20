@@ -84,18 +84,28 @@ export function ruleScoreICP({ campaign, prospect }) {
   };
 }
 
+/** How to address someone: "Sam" for "Sam Lee", but "Dr. Rao" for "Dr. Anil Rao" (a title is not a first name). */
+export function greetingName(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "there";
+  if (/^(dr|prof|professor|mr|mrs|ms|mx|shri|smt|sir)\.?$/i.test(parts[0]) && parts.length > 1) return `${parts[0]} ${parts[parts.length - 1]}`;
+  return parts[0];
+}
+
 /** Personalisation & Outreach Strategy Agent: pick a channel and draft an opening message. */
 export function ruleDraftOutreach({ campaign, prospect, knowledge, override, channel: planned }) {
   const channel = planned || (campaign.channels || [])[0] || "email";
+  const hook = prospect.dossier && prospect.dossier.hooks && prospect.dossier.hooks[0];
   const fact =
+    hook ||
     (prospect.reasons && prospect.reasons[0]) ||
     (prospect.tech && prospect.tech.length ? `your use of ${prospect.tech[0]}` : `${prospect.company}'s recent growth`);
   const productLine = knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : offerLine(campaign);
   const tone = override ? ` (${override})` : "";
-  const body = `Hi ${prospect.name.split(" ")[0]} — noticed ${fact.toLowerCase()}. ${productLine} Worth a quick look?`;
+  const body = `Hi ${greetingName(prospect.name)} — ${hook ? `I came across this about you: ${fact.replace(/[.!?]+$/, "")}.` : `noticed ${fact.toLowerCase()}.`} ${productLine} Worth a quick look?`;
   return {
     channel,
-    subject: `A note for ${prospect.name.split(" ")[0]} at ${prospect.company}`,
+    subject: `A note for ${greetingName(prospect.name)} at ${prospect.company}`,
     body,
     reasoning: `Chose ${channel} as the lead channel for this campaign and referenced a real signal from the research record${tone}.`,
   };
@@ -109,7 +119,7 @@ const offerLine = (campaign) => (campaign && campaign.offer ? campaign.offer.spl
 export function ruleHandleConversation({ campaign, prospect, knowledge }) {
   const lastIn = (prospect.conversation || []).filter((c) => c.dir === "in").slice(-1)[0];
   const text = (lastIn && lastIn.text || "").toLowerCase();
-  const first = (prospect.name || "there").split(" ")[0];
+  const first = greetingName(prospect.name);
   const objection = /(soc\s*2|security|compliance|residency|data\s*is\s*stored)/i.test(text);
   const meetingIntent = /(call|meet|thursday|friday|schedule|available)/i.test(text);
 
@@ -160,7 +170,7 @@ export function ruleStrategy({ campaign, prospect, allowedChannels, maxTouches, 
 
 /** Follow-up Agent: a short, different message for the next channel in the plan. */
 export function ruleFollowUp({ campaign, prospect, knowledge, channel, touchNumber, isLast }) {
-  const first = (prospect.name || "there").split(" ")[0];
+  const first = greetingName(prospect.name);
   const fact = firstSentence(knowledge, offerLine(campaign));
   const body = isLast
     ? `Hi ${first}, this is my last note. ${fact} If it is ever useful, I am glad to share more.`

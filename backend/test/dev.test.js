@@ -16,7 +16,7 @@ const { initDb, getState } = await import("../src/db/index.js");
 const data = await import("../src/services/data.js");
 const dev = await import("../src/services/dev.js");
 await initDb();
-config.enforceLimits = false;
+config.enforceLimits = true; // as on a real deployment: a sandbox must work with the limits on
 config.simReplyChance = 0;
 
 let server, reply;
