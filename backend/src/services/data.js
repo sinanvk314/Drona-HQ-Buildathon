@@ -20,7 +20,8 @@ import { recordReply, recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
 import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
 import { parseWorkingHours, simClockLabel, withinWorkingHours } from "./simTime.js";
-import { config } from "../config.js";
+import { config, isDronahqMode, isGeminiMode } from "../config.js";
+import { embeddingsStatus } from "./embeddings.js";
 import { currentUser } from "./auth.js";
 import { activeSystemPrompt, activeVersionOf, initCampaignPrompts, logPromptChange, pinnedVersion } from "./prompts.js";
 
@@ -485,7 +486,7 @@ export function getSettings() {
     agents: s.agents.map((a) => ({ id: a.id, name: a.settingsName, enabled: a.enabled, status: agentStatus(s, a), note: !a.enabled && a.disabledBy ? { by: a.disabledBy, ts: a.disabledTs } : null })),
     channels: s.channels.map((c) => ({ key: c.key, label: c.label, note: c.note, enabled: c.enabled, pausedTs: c.enabled ? null : c.pausedTs })),
     suppression: s.suppression,
-    integrations: s.integrations,
+    integrations: integrationStatus(),
   };
 }
 
@@ -1185,4 +1186,30 @@ export function inspectPrompt(campaignId, agentId, harness = "") {
     ].filter(Boolean),
     fixed: "Every agent also receives the platform guardrails and escalation rules, the prospect's dossier, and any knowledge it retrieved. Those are added at run time.",
   };
+}
+
+/** What is actually connected, worked out from the running configuration (never a stored list). */
+function integrationStatus() {
+  const emb = embeddingsStatus();
+  const geminiKey = !!config.gemini.apiKey;
+  return [
+    {
+      name: "Gemini", kind: "Model",
+      state: geminiKey && isGeminiMode() ? "connected" : geminiKey ? "idle" : "not-configured",
+      note: geminiKey && isGeminiMode() ? `Deciding and writing. Models: ${String(config.gemini.model)}` : geminiKey ? "Key is set but AGENT_ENGINE does not include gemini" : "No GEMINI_API_KEY: the rule engine decides instead",
+    },
+    {
+      name: "Local embeddings (RAG)", kind: "Model",
+      state: emb === "off" || emb === "unavailable" ? "not-configured" : "connected",
+      note: emb === "off" ? "Switched off (EMBEDDINGS=off): retrieval and reply routing use plain word matching" : emb === "unavailable" ? "The model could not load: word matching is used instead" : "bge-small model running on this server, no key or cost",
+    },
+    {
+      name: "DronaHQ Agentic AI", kind: "Agent platform",
+      state: isDronahqMode() ? "problem" : "idle",
+      note: isDronahqMode() ? "Configured, but its webhook has not returned agent output in our tests, so the chain falls back" : "An adapter is built but not in use: its webhook returned no agent output in our tests",
+    },
+    { name: "Gmail API", kind: "Sending", state: "not-built", note: "Not built. Email is simulated: messages are recorded, never sent" },
+    { name: "Twilio", kind: "Sending", state: "not-built", note: "Not built. SMS is simulated" },
+    { name: "Apollo", kind: "Prospect data", state: "not-built", note: "Not built. Prospects come from an AI-imitated people search or the free generator" },
+  ];
 }

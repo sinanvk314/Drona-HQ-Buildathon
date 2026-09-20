@@ -11,6 +11,8 @@ import { addSuppression, getSettings, setAgentEnabled, setChannelEnabled, setKil
 import { timeAgo } from "../utils/format.js";
 import { validateSuppression } from "../utils/validation.js";
 
+const INTEGRATION_TONE = { connected: "success", idle: "neutral", "not-configured": "warning", problem: "warning", "not-built": "muted" };
+const INTEGRATION_LABEL = { connected: "Connected", idle: "Not in use", "not-configured": "Not set up", problem: "Not working", "not-built": "Not built" };
 const STATUS_LABEL = { running: "Running", paused: "Paused", stopped: "Stopped" };
 
 export default function Settings() {
@@ -98,6 +100,7 @@ export default function Settings() {
 
         <div className="card" style={{ padding: 22 }}>
           <div className="section-title-lg">Channel Controls</div>
+          <div className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>A platform-wide switch for each way of reaching people. Turning a channel off stops every campaign from using it, at once, while everything else keeps running. Use it if a channel has a problem (a bounce spike, a complaint) without pausing whole campaigns.</div>
           {data.channels.map((c) => (
             <div key={c.key} className="row">
               <div>
@@ -133,11 +136,15 @@ export default function Settings() {
 
         <div className="card" style={{ padding: 22 }}>
           <div className="section-title-lg">Available Models, Tools &amp; Integrations</div>
+          <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>What this server is actually using, read from its configuration. Anything marked "Not built" is on the roadmap and is simulated today.</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
             {data.integrations.map((i) => (
-              <div key={i.name} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{i.name}</div>
-                <Badge tone="success">Connected</Badge>
+              <div key={i.name} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{i.name}</div>
+                  <Badge tone={INTEGRATION_TONE[i.state]}>{INTEGRATION_LABEL[i.state]}</Badge>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>{i.kind}: {i.note}</div>
               </div>
             ))}
           </div>
