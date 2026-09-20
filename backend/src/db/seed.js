@@ -446,6 +446,15 @@ export function buildSeed(now) {
   // Every campaign starts pinned to the prompt versions that are active now, with its own system prompt.
   for (const c of campaigns) initCampaignPrompts(c, agents);
 
+  // Sales representatives. A campaign sends as one of the reps assigned to it, within that rep's channels, hours and limit.
+  const reps = [
+    { id: "r_priya", name: "Priya S.", email: "priya@nimbusguard.example", channels: ["email", "linkedin", "sms"], dailyLimit: 25, workingHours: "9:00 AM – 6:00 PM", status: "active", offboardedTs: null },
+    { id: "r_rohit", name: "Rohit K.", email: "rohit@nimbusguard.example", channels: ["email", "linkedin", "voice"], dailyLimit: 25, workingHours: "9:00 AM – 6:00 PM", status: "active", offboardedTs: null },
+    { id: "r_jd", name: "JD", email: "jd@nimbusguard.example", channels: ["email", "linkedin", "sms", "voice"], dailyLimit: 30, workingHours: "8:00 AM – 8:00 PM", status: "active", offboardedTs: null },
+  ];
+  const repsFor = { c_us_saas: ["r_priya", "r_rohit"], c_india_bfsi: ["r_rohit", "r_jd"], c_ai_founders: ["r_priya", "r_jd"] };
+  for (const c of campaigns) c.repIds = repsFor[c.id] || [];
+
   return {
     version: SCHEMA_VERSION,
     seq: 100,
@@ -453,6 +462,7 @@ export function buildSeed(now) {
     killSwitch: { active: false, at: null },
     weekly: { prospects: 340, meetings: 9 },
     campaigns,
+    reps,
     prospects,
     events,
     decisions,

@@ -109,6 +109,15 @@ All routes are mounted under `/api`. Request/response bodies mirror the frontend
 | GET | `/campaigns/:id/config` | `getCampaignConfig` (settings for the edit form) |
 | PUT | `/campaigns/:id` `{values}` | `updateCampaign` (not for completed/archived) |
 | POST | `/campaigns/:id/duplicate` | `duplicateCampaign` (new Draft with the same setup) |
+| GET | `/campaigns/:id/launch-review` | `getLaunchReview` (checks before activating) |
+| POST | `/campaigns/:id/agents/:agentId` `{enabled}` | `setCampaignAgentEnabled` (pause one agent in one campaign) |
+| POST | `/campaigns/:id/reps` `{repIds}` | `setCampaignReps` |
+| GET | `/compare?ids=` | `getComparison` (campaigns side by side) |
+| GET, POST | `/reps` | `getReps`, `createRep` |
+| PUT | `/reps/:id` | `updateRep` |
+| POST | `/reps/:id/offboard` | `offboardRep` (returns the affected campaigns) |
+| POST | `/reps/:id/reassign` `{toRepId}` | `reassignRep` |
+| POST | `/auth/login` `{name, code}` | sign in (public); `GET /auth/config`, `GET /auth/me` |
 | POST | `/campaigns/:id/sources` `{name, category, content}` | `addCampaignSource` |
 | DELETE | `/campaigns/:id/sources/:sourceId` | `removeCampaignSource` |
 | POST | `/campaigns/:id/pause` | `pauseCampaign` |

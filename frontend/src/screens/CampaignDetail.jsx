@@ -12,6 +12,7 @@ import { ConfirmDialog } from "../components/ui/Modal.jsx";
 import CampaignAgentsPanel from "../components/campaign/CampaignAgentsPanel.jsx";
 import CampaignActivity from "../components/campaign/CampaignActivity.jsx";
 import LaunchReviewModal from "../components/campaign/LaunchReviewModal.jsx";
+import CampaignRepsPanel from "../components/campaign/CampaignRepsPanel.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
@@ -207,6 +208,8 @@ export default function CampaignDetail({ params }) {
             ))}
           </div>
         </div>
+
+        <CampaignRepsPanel campaignId={c.id} reps={c.reps} options={c.repOptions} editable={editable} />
 
         <CampaignAgentsPanel campaignId={c.id} agents={c.agents} editable={editable} />
 

@@ -6,7 +6,7 @@
 // have changed.
 import { getState, withState } from "../db/index.js";
 import { addEvent, canTransition, effectiveStatus, isRunning, pct, zeroFunnel, agentStatus } from "./logic.js";
-import { STAGE_KEYS, STAGE_LABELS, CARD_CHANNEL_LABELS } from "./constants.js";
+import { STAGE_KEYS, STAGE_LABELS, CARD_CHANNEL_LABELS, CHANNEL_KEYS } from "./constants.js";
 import { validateCampaign, validateSuppression } from "../utils/validation.js";
 import { shortDate } from "../utils/format.js";
 import { checkConflict } from "./conflict.js";
@@ -14,7 +14,8 @@ import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
 import { recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
-import { simClockLabel, withinWorkingHours } from "./simTime.js";
+import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
+import { parseWorkingHours, simClockLabel, withinWorkingHours } from "./simTime.js";
 import { config } from "../config.js";
 import { currentUser } from "./auth.js";
 import { activeSystemPrompt, activeVersionOf, initCampaignPrompts, logPromptChange, pinnedVersion } from "./prompts.js";
@@ -173,6 +174,7 @@ export function getCommandCenter() {
   return {
     now: Date.now(),
     simClock: simClockLabel(),
+    repAlerts: campaignsNeedingReps(s),
     killSwitch: s.killSwitch.active,
     summary: { configured: cs.length, running: cs.filter((c) => isRunning(s, c)).length },
     kpis: [
@@ -216,6 +218,8 @@ export function getCampaign(id) {
       id: a.id, title: a.title, globallyEnabled: a.enabled,
       enabled: !(c.agentsEnabled && c.agentsEnabled[a.id] === false),
     })),
+    reps: (c.repIds || []).map((rid) => s.reps.find((r) => r.id === rid)).filter(Boolean).map((r) => ({ id: r.id, name: r.name, status: r.status, sentToday: repTouchesToday(s, r.id) })),
+    repOptions: s.reps.filter((r) => r.status === "active").map((r) => ({ id: r.id, name: r.name })),
     copiedFrom: c.copiedFrom ? (() => { const o = s.campaigns.find((x) => x.id === c.copiedFrom); return o ? { id: o.id, name: o.name } : null; })() : null,
     activity: activityFor(s, c, pending),
     outcomes: outcomesFor(c, f, o),
@@ -767,6 +771,118 @@ export function setCampaignAgentEnabled(campaignId, agentId, enabled) {
     c.modifiedTs = Date.now();
     addEvent(s, { campaignId, type: enabled ? "resume" : "paused", text: `${currentUser()} ${enabled ? "turned on" : "paused"} **${agent.title}** in **${c.name}**`, featured: false });
     return { agentId, enabled: !!enabled };
+  });
+}
+
+// ---- representatives -------------------------------------------------------------------------------------------
+
+const repView = (s, r) => ({
+  id: r.id, name: r.name, email: r.email, channels: r.channels, dailyLimit: r.dailyLimit, workingHours: r.workingHours,
+  status: r.status, offboardedTs: r.offboardedTs, sentToday: repTouchesToday(s, r.id),
+  campaigns: s.campaigns.filter((c) => (c.repIds || []).includes(r.id) && c.status !== "archived").map((c) => ({ id: c.id, name: c.name, status: c.status })),
+  prospects: s.prospects.filter((p) => p.repId === r.id).length,
+});
+
+export function getReps() {
+  const s = getState();
+  return { reps: s.reps.map((r) => repView(s, r)), alerts: campaignsNeedingReps(s) };
+}
+
+function validateRep(v) {
+  const e = {};
+  if (!v.name || v.name.trim().length < 2) e.name = "Enter the rep's name.";
+  if (!v.email || !/^\S+@\S+\.\S+$/.test(v.email.trim())) e.email = "Enter a valid email address.";
+  if (!Array.isArray(v.channels) || !v.channels.length || v.channels.some((c) => !CHANNEL_KEYS.includes(c))) e.channels = "Select at least one channel.";
+  const n = Number(v.dailyLimit);
+  if (!Number.isFinite(n) || n < 1 || n > 500) e.dailyLimit = "Enter a number between 1 and 500.";
+  if (!parseWorkingHours(v.workingHours)) e.workingHours = "Enter working hours like 9:00 AM – 6:00 PM.";
+  if (Object.keys(e).length) {
+    const err = new Error("Please fix the highlighted fields.");
+    err.fields = e;
+    throw err;
+  }
+}
+
+export function createRep(values = {}) {
+  return withState((s) => {
+    validateRep(values);
+    s.seq += 1;
+    const rep = {
+      id: `r_${s.seq}`, name: values.name.trim(), email: values.email.trim(), channels: values.channels, dailyLimit: Number(values.dailyLimit),
+      workingHours: values.workingHours.trim(), status: "active", offboardedTs: null,
+    };
+    s.reps.push(rep);
+    return repView(s, rep);
+  });
+}
+
+export function updateRep(id, values = {}) {
+  return withState((s) => {
+    const rep = s.reps.find((r) => r.id === id);
+    if (!rep) throw new Error("Rep not found.");
+    if (rep.status !== "active") throw new Error("An offboarded rep cannot be edited.");
+    validateRep(values);
+    Object.assign(rep, { name: values.name.trim(), email: values.email.trim(), channels: values.channels, dailyLimit: Number(values.dailyLimit), workingHours: values.workingHours.trim() });
+    return repView(s, rep);
+  });
+}
+
+/** Offboarding: the rep stops sending at once, and every campaign that used them is surfaced so an admin can reassign it. */
+export function offboardRep(id) {
+  return withState((s) => {
+    const rep = s.reps.find((r) => r.id === id);
+    if (!rep) throw new Error("Rep not found.");
+    if (rep.status !== "active") throw new Error("This rep is already offboarded.");
+    rep.status = "offboarded";
+    rep.offboardedTs = Date.now();
+    const affected = s.campaigns
+      .filter((c) => (c.repIds || []).includes(id) && c.status !== "archived")
+      .map((c) => {
+        const remaining = c.repIds.map((rid) => s.reps.find((r) => r.id === rid)).filter((r) => r && r.status === "active");
+        return { id: c.id, name: c.name, status: c.status, activeRepsLeft: remaining.length };
+      });
+    addEvent(s, { campaignId: null, type: "edit", text: `${currentUser()} offboarded **${rep.name}**. ${affected.length} campaign${affected.length === 1 ? "" : "s"} used them${affected.some((c) => !c.activeRepsLeft) ? ", and some now have no active rep" : ""}`, featured: true });
+    return { id, affected };
+  });
+}
+
+/** Hands a rep's campaigns and prospects to another active rep (typically after offboarding). */
+export function reassignRep(fromId, toId) {
+  return withState((s) => {
+    const from = s.reps.find((r) => r.id === fromId);
+    const to = s.reps.find((r) => r.id === toId);
+    if (!from || !to) throw new Error("Rep not found.");
+    if (to.status !== "active") throw new Error("Choose an active rep to reassign to.");
+    if (fromId === toId) throw new Error("Choose a different rep.");
+    let campaigns = 0;
+    for (const c of s.campaigns) {
+      if (!(c.repIds || []).includes(fromId)) continue;
+      c.repIds = c.repIds.filter((x) => x !== fromId);
+      if (!c.repIds.includes(toId)) c.repIds.push(toId);
+      c.modifiedTs = Date.now();
+      campaigns += 1;
+    }
+    let prospects = 0;
+    for (const p of s.prospects) if (p.repId === fromId) { p.repId = toId; prospects += 1; }
+    addEvent(s, { campaignId: null, type: "edit", text: `${currentUser()} reassigned ${campaigns} campaign${campaigns === 1 ? "" : "s"} and ${prospects} prospect${prospects === 1 ? "" : "s"} from **${from.name}** to **${to.name}**`, featured: true });
+    return { campaigns, prospects };
+  });
+}
+
+export function setCampaignReps(campaignId, repIds) {
+  return withState((s) => {
+    const c = campaignOf(s, campaignId);
+    if (c.status === "archived") throw new Error("An archived campaign cannot be edited.");
+    const ids = [...new Set(Array.isArray(repIds) ? repIds : [])];
+    for (const id of ids) {
+      const r = s.reps.find((x) => x.id === id);
+      if (!r) throw new Error("Rep not found.");
+      if (r.status !== "active" && !(c.repIds || []).includes(id)) throw new Error(`${r.name} is offboarded.`);
+    }
+    c.repIds = ids;
+    c.modifiedTs = Date.now();
+    addEvent(s, { campaignId, type: "edit", text: `${currentUser()} set the reps for **${c.name}** to ${ids.map((id) => s.reps.find((r) => r.id === id).name).join(", ") || "no one"}`, featured: false });
+    return { repIds: ids };
   });
 }
 

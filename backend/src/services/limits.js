@@ -2,6 +2,7 @@
 // They gate every new touch: an agent may propose one, but this decides whether it may go out now.
 import { config } from "../config.js";
 import { hoursToMs, simClockLabel, simDay, withinWorkingHours } from "./simTime.js";
+import { noRepReason } from "./reps.js";
 
 const FREQUENCY_WINDOW_HOURS = 7 * 24;
 const FREQUENCY_MAX_TOUCHES = 4;
@@ -30,7 +31,7 @@ export function recentTouchesTo(state, prospect, now = Date.now()) {
 }
 
 /** -> { ok, reason }. `reason` is written into the Decision Journal and shown on the campaign. */
-export function outreachAllowed(state, campaign, prospect, now = Date.now()) {
+export function outreachAllowed(state, campaign, prospect, now = Date.now(), channel = null) {
   if (!config.enforceLimits) return { ok: true };
   if (!withinWorkingHours(campaign, now)) {
     return { ok: false, reason: `Outside working hours (simulated time ${simClockLabel(now)}; window ${campaign.workingHours})` };
@@ -42,5 +43,7 @@ export function outreachAllowed(state, campaign, prospect, now = Date.now()) {
   if (prospect && recentTouchesTo(state, prospect, now) >= FREQUENCY_MAX_TOUCHES) {
     return { ok: false, reason: `Contact frequency cap reached (${FREQUENCY_MAX_TOUCHES} touches in ${FREQUENCY_WINDOW_HOURS / 24} days)` };
   }
+  const noRep = noRepReason(state, campaign, channel || (campaign.channels || [])[0], now);
+  if (noRep) return { ok: false, reason: noRep };
   return { ok: true };
 }

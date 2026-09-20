@@ -44,6 +44,14 @@ router.post("/campaigns/:id/archive", asyncRoute(async (req, res) => res.json(da
 
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
 
+// ---- representatives ------------------------------------------------------------------------------------
+router.get("/reps", asyncRoute(async (req, res) => res.json(data.getReps())));
+router.post("/reps", asyncRoute(async (req, res) => res.json(data.createRep(req.body || {}))));
+router.put("/reps/:id", asyncRoute(async (req, res) => res.json(data.updateRep(req.params.id, req.body || {}))));
+router.post("/reps/:id/offboard", asyncRoute(async (req, res) => res.json(data.offboardRep(req.params.id))));
+router.post("/reps/:id/reassign", asyncRoute(async (req, res) => res.json(data.reassignRep(req.params.id, (req.body || {}).toRepId))));
+router.post("/campaigns/:id/reps", asyncRoute(async (req, res) => res.json(data.setCampaignReps(req.params.id, (req.body || {}).repIds))));
+
 // ---- prospects ---------------------------------------------------------------
 router.get("/prospects", asyncRoute(async (req, res) => res.json(data.getProspects())));
 router.get("/prospects/:id", asyncRoute(async (req, res) => res.json(data.getProspect(req.params.id))));

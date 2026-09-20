@@ -30,6 +30,19 @@ export function migrate(state, now = Date.now()) {
   // silently change how a running campaign behaves.
   for (const c of state.campaigns) if (initCampaignPrompts(c, state.agents)) changed = true;
 
+  // Representatives: add the seeded reps if the state predates them, and assign them to the seeded campaigns.
+  if (!Array.isArray(state.reps)) {
+    state.reps = fresh.reps;
+    changed = true;
+  }
+  for (const c of state.campaigns) {
+    if (!Array.isArray(c.repIds)) {
+      const seeded = fresh.campaigns.find((f) => f.id === c.id);
+      c.repIds = seeded ? [...seeded.repIds] : [];
+      changed = true;
+    }
+  }
+
   for (const p of state.prospects) {
     if (!Array.isArray(p.touches)) { p.touches = []; changed = true; }
     if (!("plan" in p)) { p.plan = null; changed = true; }

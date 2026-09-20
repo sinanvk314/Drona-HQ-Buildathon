@@ -89,6 +89,20 @@ the default for new campaigns). Each **campaign** is pinned to one library versi
 running campaign; a campaign changes only when someone changes its own pin, system prompt or override. Every Decision Journal
 entry records the version and the campaign prompt version that produced it.
 
+**Representatives.** Sales reps have their own channels, working hours and daily limit, and are assigned to campaigns. A campaign
+with reps sends every touch *as* one of them (the least-loaded one who is active, works that channel, is inside their hours and under
+their limit; a prospect keeps the same rep). If no assigned rep can send, outreach is held with the reason. Offboarding a rep stops
+them at once, lists every campaign that used them, flags any campaign left with no active rep, and lets an admin reassign their
+campaigns and prospects.
+
+**Levels of control.** Campaign pause, per-campaign agent pause (one agent stops in one campaign; the rest continues), channel pause
+and the global kill switch each stop exactly their own scope. A Draft campaign shows a pre-launch review (settings complete, channels,
+knowledge, paused agents, approval level, overlap with running campaigns, expected volume) before it is activated. Campaigns can be
+compared side by side, including a duplicated variant against its original.
+
+**Sign-in.** A login page asks for a name (pre-filled with JD) and, when `APP_ACCESS_CODE` is set on the server, the access code;
+approvals, prompt changes, pauses and the kill switch are recorded under that name.
+
 **Approval levels** (per campaign): *Manual* (every toggled action waits in the Approvals queue), *Assisted*
 (auto-approves at a chosen fit score after you have approved a few of that action yourself) and *Autonomous*.
 An escalated objection always needs a human, at every level.
@@ -101,8 +115,8 @@ blocks contacting the same person from two campaigns within 14 days, and the sup
 
 ```
 frontend/            React + Vite control-plane UI (built in DronaHQ Studio, then extended)
-  src/screens/         Command Center, Campaign detail, Create campaign, Approvals, Decision Journal,
-                       Prospects, Agents & Prompts, Settings
+  src/screens/         Login, Command Center, Campaign detail, Create campaign, Approvals, Decision Journal,
+                       Prospects, Agents & Prompts, Representatives, Compare, Settings
   src/components/      shell, ui primitives, campaign (knowledge panel, approval level), features
   src/services/api.js  every call to the backend, in one file
 backend/             Node + Express API and the autonomous scheduler
@@ -348,7 +362,9 @@ as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 - Multi-channel sequences with a planned channel order, a follow-up cadence that stops at the touch limit, and hard limits (working hours, daily limit, contact-frequency cap) enforced on a simulated clock.
 - A grounding check on every draft, with auto-send blocked when it fails.
 - Per-campaign knowledge base with add/remove in the UI, semantic retrieval before every decision, and the retrieved sources shown in the Decision Journal.
-- Edit a campaign after creation, and duplicate one into a new Draft to build a variant.
+- Edit a campaign after creation, duplicate one into a new Draft to build a variant, and compare the two; Complete and Archive from the UI.
+- Representatives with assignment, sender identity, per-rep limits and hours, offboarding and reassignment.
+- Sign-in, a pre-launch review, per-campaign agent pause, and a campaign dashboard with agent activity, failed workflows, reply outcomes and conversion rates.
 - Prompt versioning with per-campaign pinning, a versioned campaign system prompt, side-by-side compare and roll-back, and a change log; the versions in force are recorded on every decision.
 - Approval levels, cross-campaign conflict detection, a global suppression list, cost cap and an efficiency panel.
 - Measurement: tokens, latency and cost per prospect / qualified lead / conversation on the dashboard, and a golden-set evaluation.

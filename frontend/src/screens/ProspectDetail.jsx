@@ -196,7 +196,7 @@ export default function ProspectDetail({ params }) {
                     }}
                   >
                     {m.text}
-                    <div style={{ fontSize: 10.5, marginTop: 5, opacity: out ? 0.75 : 1, color: out ? "#fff" : "var(--text-3)" }}>{m.when}</div>
+                    <div style={{ fontSize: 10.5, marginTop: 5, opacity: out ? 0.75 : 1, color: out ? "#fff" : "var(--text-3)" }}>{m.when}{m.channel ? ` · ${m.channel}` : ""}{out && m.sender ? ` · sent as ${m.sender}` : ""}</div>
                   </div>
                 );
               })}

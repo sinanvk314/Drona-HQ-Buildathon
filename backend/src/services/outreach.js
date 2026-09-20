@@ -2,6 +2,7 @@
 // scheduler or approved by a human. Keeping it here means the touch history, counters, funnel and the
 // follow-up clock can never disagree.
 import { hoursToMs } from "./simTime.js";
+import { pickRep } from "./reps.js";
 
 const CHANNEL_LABEL = { email: "Email", linkedin: "LinkedIn", sms: "SMS", voice: "Voice" };
 export const channelLabel = (key) => CHANNEL_LABEL[key] || key;
@@ -17,8 +18,12 @@ export function touchLimit(campaign, prospect) {
  */
 export function recordTouch(state, campaign, prospect, { channel, kind, subject = "", body = "", ts = Date.now() }) {
   const n = prospect.touches.length + 1;
-  prospect.touches.push({ n, channel, kind, subject, ts });
-  prospect.conversation.push({ dir: "out", text: body, when: "Today", channel });
+  // Sent as one of the campaign's assigned reps (the same rep across a prospect's touches while they can still send).
+  // A human-approved message is sent even if the rep is over a limit, so fall back to any active assigned rep.
+  const rep = pickRep(state, campaign, channel, { now: ts, preferId: prospect.repId }) || pickRep(state, campaign, channel, { now: ts, preferId: prospect.repId, strict: false });
+  if (rep) prospect.repId = rep.id;
+  prospect.touches.push({ n, channel, kind, subject, ts, repId: rep ? rep.id : null, repName: rep ? rep.name : null });
+  prospect.conversation.push({ dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined });
   prospect.history.push({
     kind: channel === "email" ? "email" : "chat",
     text: kind === "first" ? `Opening ${channel} sent — "${subject}"` : `Follow-up ${n - 1} sent on ${channel}`,

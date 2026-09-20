@@ -11,7 +11,7 @@ const ITEMS = [
   { key: "prospects", label: "Prospects", icon: "people", route: "prospects" },
   { key: "approvals", label: "Approvals", icon: "check", route: "approvals" },
   { key: "agents", label: "Agents & Prompts", icon: "sliders", route: "agents" },
-  { key: "knowledge", label: "Knowledge", icon: "book", route: "knowledge" },
+  { key: "reps", label: "Representatives", icon: "people", route: "reps" },
   { key: "analytics", label: "Compare", icon: "bars", route: "analytics" },
   { key: "settings", label: "Settings", icon: "gear", route: "settings" },
 ];

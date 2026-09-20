@@ -277,7 +277,7 @@ async function runPersonalisation(s, campaign) {
       // If this touch would go out without a human, the hard limits must allow it now (no LLM call is spent if not).
       const goesOutUnattended = !campaign.approvals.firstOutreach || autoApproval(s, campaign, prospect, "first").ok;
       if (goesOutUnattended) {
-        const gate = outreachAllowed(s, campaign, prospect);
+        const gate = outreachAllowed(s, campaign, prospect, Date.now(), planned || campaign.channels[0]);
         if (!gate.ok) {
           holdOutreach(s, campaign, prospect, gate.reason);
           continue;
@@ -591,7 +591,7 @@ async function runFollowUp(s, campaign) {
       const needsApproval = !!campaign.approvals.firstOutreach;
       const goesOutUnattended = !needsApproval || autoApproval(s, campaign, prospect, "followup").ok;
       if (goesOutUnattended) {
-        const gate = outreachAllowed(s, campaign, prospect);
+        const gate = outreachAllowed(s, campaign, prospect, Date.now(), channel);
         if (!gate.ok) {
           holdOutreach(s, campaign, prospect, gate.reason);
           prospect.nextStep = "Awaiting reply"; // still due: retried on a later tick

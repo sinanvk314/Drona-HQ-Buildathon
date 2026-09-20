@@ -87,6 +87,13 @@ export const getApproval = (id) => get(`/approvals/${id}`);
 export const getAgents = () => get("/agents");
 export const getAgent = (id) => get(`/agents/${id}`);
 export const getSettings = () => get("/settings");
+// Representatives: who a campaign sends as, their channels, hours and daily limit, and offboarding.
+export const getReps = () => get("/reps");
+export const createRep = (values) => post("/reps", values);
+export const updateRep = (id, values) => request(`/reps/${id}`, { method: "PUT", body: values }).then((r) => (emit(), r));
+export const offboardRep = (id) => post(`/reps/${id}/offboard`);
+export const reassignRep = (id, toRepId) => post(`/reps/${id}/reassign`, { toRepId });
+export const setCampaignReps = (id, repIds) => post(`/campaigns/${id}/reps`, { repIds });
 export const getComparison = (ids) => get(`/compare${ids && ids.length ? `?ids=${ids.join(",")}` : ""}`);
 
 // ---------------------------------------------------------------- campaign writes

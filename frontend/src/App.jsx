@@ -11,7 +11,7 @@ import DecisionJournal from "./screens/DecisionJournal.jsx";
 import Approvals from "./screens/Approvals.jsx";
 import AgentsPrompts from "./screens/AgentsPrompts.jsx";
 import Settings from "./screens/Settings.jsx";
-import ComingSoon from "./screens/ComingSoon.jsx";
+import Reps from "./screens/Reps.jsx";
 import Compare from "./screens/Compare.jsx";
 import Login from "./screens/Login.jsx";
 import { useSession } from "./hooks/useSession.js";
@@ -27,7 +27,7 @@ const SCREENS = {
   journal: DecisionJournal,
   approvals: Approvals,
   agents: AgentsPrompts,
-  knowledge: ComingSoon,
+  reps: Reps,
   analytics: Compare,
   settings: Settings,
 };

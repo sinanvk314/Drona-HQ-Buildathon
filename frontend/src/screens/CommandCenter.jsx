@@ -63,6 +63,16 @@ export default function CommandCenter({ routeName }) {
           ))}
         </div>
 
+        {data.repAlerts && data.repAlerts.length > 0 && (
+          <div className="card" style={{ background: "var(--danger-soft)", borderColor: "#F2C7C7", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+            <Icon name="warning" size={20} stroke={1.7} color="var(--danger)" />
+            <div style={{ flexGrow: 1, fontSize: 13.5 }}>
+              <strong>{data.repAlerts.map((c) => c.name).join(", ")}</strong> {data.repAlerts.length === 1 ? "has" : "have"} no active rep and cannot send until reassigned.
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate("reps")}>Reassign</button>
+          </div>
+        )}
+
         {approvals.count > 0 ? (
           <div
             className="card"
