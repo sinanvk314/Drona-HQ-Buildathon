@@ -11,9 +11,11 @@ const MAX_FACTS = 60;
 const clip = (t, n) => String(t || "").replace(/\s+/g, " ").trim().slice(0, n);
 
 export function ensureDossier(prospect) {
-  if (!prospect.dossier) prospect.dossier = { facts: [], notes: [] };
+  if (!prospect.dossier) prospect.dossier = { facts: [], notes: [], hooks: [], gaps: [] };
   if (!Array.isArray(prospect.dossier.facts)) prospect.dossier.facts = [];
   if (!Array.isArray(prospect.dossier.notes)) prospect.dossier.notes = [];
+  if (!Array.isArray(prospect.dossier.hooks)) prospect.dossier.hooks = [];
+  if (!Array.isArray(prospect.dossier.gaps)) prospect.dossier.gaps = [];
   return prospect.dossier;
 }
 
@@ -47,6 +49,8 @@ export function dossierFor(prospect) {
     entries.push({ agent_name: prospect.qual.agent, harness_version: prospect.qual.harness, decision: prospect.qual.status, handoff_note: prospect.qual.reasoning });
   }
   for (const f of d.facts) entries.push({ agent_name: "research", decision: `${f.kind}: ${f.text}`, source: f.source });
+  for (const h of d.hooks) entries.push({ agent_name: "research", decision: `reason they might care: ${h}` });
+  for (const g of d.gaps) entries.push({ agent_name: "research", decision: `not known: ${g}` });
   for (const n of d.notes) entries.push({ agent_name: n.agent, harness_version: n.harness, handoff_note: n.note });
   for (const h of prospect.history || []) entries.push({ agent_name: "activity", decision: h.text });
   return entries;

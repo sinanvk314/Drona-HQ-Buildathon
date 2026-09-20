@@ -8,6 +8,7 @@ import { addEvent, isRunning } from "./logic.js";
 import { config } from "../config.js";
 import { checkConflict } from "./conflict.js";
 import { generateProspect } from "./prospectGenerator.js";
+import { newProspect } from "./prospects.js";
 import * as engine from "./agentEngine/index.js";
 import { classifyReply } from "./replyRouter.js";
 import { recordAvoided } from "./usage.js";
@@ -15,7 +16,7 @@ import { recordTouch, touchLimit } from "./outreach.js";
 import { outreachAllowed } from "./limits.js";
 import { describeIssues } from "./grounding.js";
 import { hoursToMs } from "./simTime.js";
-import { addNote } from "./dossier.js";
+import { addFact, addNote, ensureDossier } from "./dossier.js";
 import { SDR_STEPS } from "./sdrSteps.js";
 import { shortDate } from "../utils/format.js";
 
@@ -55,19 +56,99 @@ function pushApproval(s, approval) {
   });
 }
 
-async function runLeadResearch(s, campaign) {
+// How many people are waiting to be researched or scored before the search is asked for more.
+const SEARCH_BACKLOG = 4;
+const SEARCH_INTERVAL_MS = 45 * 1000;
+
+// Lead Research: finding people. A single-target campaign never searches (it has exactly the person it was made for).
+// "simulated-search" asks the imitated people search (Gemini acting as a search tool) for fictional candidates that match
+// the campaign's audience, whatever it is; "synthetic" is the free company-style generator.
+async function runDiscovery(s, campaign) {
   if (!agentEnabled(s, "lead", campaign)) return;
-  // Background volume (mirrors the scale implied by the seeded funnel totals).
+  if (campaign.mode === "single") return;
+
+  if (campaign.sourcing === "simulated-search") {
+    const waiting = s.prospects.filter((p) => p.campaignId === campaign.id && (p.stage === "discovered" || p.stage === "researched") && p.fit == null).length;
+    if (waiting >= SEARCH_BACKLOG || Date.now() - (campaign.lastSourcedAt || 0) < SEARCH_INTERVAL_MS) return;
+    campaign.lastSourcedAt = Date.now();
+    const leadAgent = agentById(s, "lead");
+    const avoid = s.prospects.filter((p) => p.campaignId === campaign.id).map((p) => p.name);
+    const found = await engine.sourceProspects({ campaign, count: 3, avoid, leadAgent });
+    const provider = "imitated search (AI, fictional people)";
+    const prospects = found.candidates
+      ? found.candidates.map((c) => {
+          const p = newProspect(campaign, c, { provider, real: false, note: "Made up by an AI acting as a people-search tool" });
+          for (const fact of c.facts) addFact(p, { text: fact, source: provider, kind: "profile" });
+          return p;
+        })
+      : [generateProspect(campaign)]; // no model available: the free generator keeps the campaign moving
+    for (const p of prospects) s.prospects.push(p);
+    campaign.funnel.discovered += prospects.length;
+    pushDecision(s, {
+      kind: "enriched",
+      campaignId: campaign.id,
+      agent: "Lead Research Agent",
+      harness: found.harness || "n/a",
+      engine: found.candidates ? found.engine : "rule",
+      headline: `Found ${prospects.length} ${prospects.length === 1 ? "person" : "people"} for ${campaign.name}`,
+      summary: `Sourcing found ${prospects.length} candidate${prospects.length === 1 ? "" : "s"} through ${found.candidates ? "the imitated people search" : "the free generator"}: ${prospects.map((p) => p.name).join(", ")}`,
+      evidence: [`Source: ${found.candidates ? provider : "synthetic generator"}. These people are simulated, not real.`, `Audience searched for: ${campaign.icpText || campaign.objective || "the campaign's target"}`],
+      instruction: "Return candidates that match the campaign's audience. All people are fictional until a real data source is connected.",
+      finalAction: "Hand each candidate to Research",
+    });
+    return;
+  }
+
+  // Free generator (company-style prospects), plus the background volume that mirrors the seeded funnel totals.
   const bump = 1 + Math.floor(Math.random() * 4);
   campaign.funnel.discovered += bump;
   campaign.funnel.researched = Math.min(campaign.funnel.discovered, campaign.funnel.researched + bump);
-
-  // A named, fully-enriched prospect the UI can actually show, some fraction of ticks.
   if (Math.random() < 0.5) {
-    const prospect = generateProspect(campaign);
-    s.prospects.push(prospect);
+    s.prospects.push(generateProspect(campaign));
     if (Math.random() < 0.3) {
-      addEvent(s, { campaignId: campaign.id, type: "enrich", text: `Lead Research Agent enriched a new prospect for **${campaign.name}**`, featured: false });
+      addEvent(s, { campaignId: campaign.id, type: "enrich", text: `Lead Research Agent found a new prospect for **${campaign.name}**`, featured: false });
+    }
+  }
+}
+
+// Research: a brief from what is known about each new prospect (facts, reasons they might care, gaps). It works only from the
+// prospect's own data, so it can structure and prioritise what is known but cannot make anything up.
+async function runResearch(s, campaign) {
+  const waiting = s.prospects.filter((p) => p.campaignId === campaign.id && p.stage === "discovered");
+  if (!agentEnabled(s, "research", campaign)) {
+    for (const p of waiting) { p.stage = "researched"; p.nextStep = "ICP scoring"; }
+    return;
+  }
+  const researchAgent = agentById(s, "research");
+  for (const prospect of waiting.slice(0, config.schedulerBatchSize)) {
+    try {
+      const result = await engine.researchProspect({ campaign, prospect, researchAgent });
+      const d = ensureDossier(prospect);
+      for (const f of result.facts) addFact(prospect, { text: f.text, source: "research", kind: f.kind });
+      d.hooks = result.hooks;
+      d.gaps = result.gaps;
+      prospect.research = { summary: result.summary, confidence: result.confidence, engine: result.engine, harness: result.harness, ts: Date.now() };
+      prospect.stage = "researched";
+      prospect.nextStep = "ICP scoring";
+      prospect.lastAction = "Researched, {ago}";
+      prospect.lastTs = Date.now();
+      addNote(prospect, { agent: "Research Agent", harness: result.harness, engine: result.engine, note: `${result.summary} ${result.hooks.length ? `Reasons to reach out: ${result.hooks.join("; ")}.` : "No specific reason to reach out is known."}${result.gaps.length ? ` Not known: ${result.gaps.join("; ")}.` : ""}` });
+      pushDecision(s, {
+        kind: "enriched",
+        campaignId: campaign.id,
+        prospectId: prospect.id,
+        agent: "Research Agent",
+        harness: result.harness,
+        engine: result.engine,
+        headline: `Researched — ${prospect.name}, ${prospect.company}`,
+        summary: `Research Agent built a brief on **${prospect.name}**, ${prospect.company} (${result.confidence} confidence)`,
+        evidence: [result.summary, ...result.hooks.map((h) => `Reason to reach out: ${h}`), ...result.gaps.map((g) => `Not known: ${g}`), ...(result.dropped ? [`${result.dropped} statement${result.dropped === 1 ? "" : "s"} dropped: not supported by the prospect's own data`] : [])],
+        retrieved: result.retrieved,
+        instruction: "Use only facts present in the input. Never invent.",
+        finalAction: "Hand the brief to ICP Fitment",
+      });
+    } catch (e) {
+      recordFailure(s, campaign, prospect, "Research", e);
     }
   }
 }
@@ -100,6 +181,19 @@ async function runIcpFitment(s, campaign) {
 
   for (const prospect of batch) {
     try {
+      if (campaign.mode === "single") {
+        // The ICP is this one named person: nothing to score.
+        prospect.fit = 100;
+        prospect.reasons = ["Named target of this campaign"];
+        prospect.qual = { status: "Qualified", reasoning: "Named target: this campaign is aimed at exactly this person, so there is no fit to score.", agent: "ICP Fitment Agent", harness: "policy", ts: Date.now() };
+        prospect.stage = "qualified";
+        prospect.lastAction = "Qualified (named target), {ago}";
+        prospect.nextStep = "Personalise & send";
+        prospect.lastTs = Date.now();
+        campaign.funnel.qualified += 1;
+        addNote(prospect, { agent: "ICP Fitment Agent", harness: "policy", engine: "policy", note: "Named target: qualified without scoring." });
+        continue;
+      }
       const result = await engine.scoreICP({ state: s, campaign, prospect, icpAgent });
       prospect.fit = result.score;
       prospect.reasons = result.reasons;
@@ -658,7 +752,8 @@ async function runFollowUp(s, campaign) {
 
 // The pipeline is defined once, in sdrSteps.js (the SDR Blueprint shows the same list); this maps each step to its code.
 const RUNNERS = {
-  discovery: runLeadResearch,
+  discovery: runDiscovery,
+  research: runResearch,
   icp: runIcpFitment,
   strategy: runStrategy,
   personalisation: runPersonalisation,

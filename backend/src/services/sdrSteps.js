@@ -13,6 +13,12 @@ export const SDR_STEPS = [
     writes: ["A new prospect with its first facts in the dossier"],
   },
   {
+    key: "research", agentId: "research", title: "Research",
+    purpose: "Turns what is known about a prospect into a brief: facts, reasons they might care, and what is still unknown. Uses only known facts and never invents.",
+    reads: ["What is already in the dossier", "Campaign offer and knowledge"],
+    writes: ["Facts, reasons to reach out and gaps in the dossier, a hand-off note"],
+  },
+  {
     key: "icp", agentId: "icp", title: "ICP Fitment",
     purpose: "Judges whether each prospect fits the campaign's target and decides who qualifies.",
     reads: ["The whole dossier", "Qualification criteria", "Exclusion criteria"],

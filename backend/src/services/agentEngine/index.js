@@ -73,6 +73,38 @@ async function groundedRun(run, check) {
   return { ...result, grounding };
 }
 
+/**
+ * Sourcing Agent: candidate people for a campaign's target. The imitated search (Gemini acting as a people-search tool,
+ * fictional people) when the campaign asks for it and a model is available; otherwise the free generator.
+ * @returns {{ candidates: object[], provider: string, real: false }}
+ */
+export async function sourceProspects({ campaign, count, avoid = [], leadAgent }) {
+  const { harness } = activePromptFor(leadAgent, campaign);
+  const result = await withFallback(
+    null,
+    () => ({ candidates: null }),
+    null,
+    () => gemini.geminiSourceProspects({ campaign, count, avoid }).then((candidates) => ({ candidates }))
+  );
+  return { ...result, harness };
+}
+
+/** Research Agent: a structured brief from what is known about one prospect, using only that. */
+export async function researchProspect({ campaign, prospect, researchAgent }) {
+  const { text, harness, override } = activePromptFor(researchAgent, campaign);
+  const knowledge = await retrieve(campaign, `${campaign.offer || ""} ${prospect.title || ""} ${prospect.industry || ""}`, 2);
+  const run = () => withFallback(
+    null,
+    () => rule.ruleResearch({ campaign, prospect }),
+    null,
+    () => gemini.geminiResearch({ campaign, prospect, promptText: text, override, knowledge })
+  );
+  const result = await run();
+  // Nothing unsupported is stored: a fact whose figures or claims are not in the prospect's own data is dropped.
+  const facts = result.facts.filter((f) => checkGrounding({ text: f.text, knowledge: [], prospect, campaign }).ok);
+  return { ...result, facts, dropped: result.facts.length - facts.length, harness, retrieved: [...new Set(knowledge.map((k) => k.label))] };
+}
+
 export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   const { text, harness, override } = activePromptFor(icpAgent, campaign);
   const knowledge = await retrieve(campaign, `${campaign.icpText} ${campaign.qualificationPrompt}`, 2);
@@ -85,7 +117,7 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   // ...and only when the research notes hold no buying signal that could outweigh a weak profile (the rule
   // engine reads the profile fields, not the notes, so a small company that is hiring must reach the LLM).
   const hasBuyingSignal = (prospect.history || []).some((h) => /hiring|raised|announced|migrat|launch/i.test(h.text || ""));
-  const clearCut = margin > 0 && !ruleResult.qualified && ruleResult.score <= ruleResult.threshold - margin && !hasBuyingSignal;
+  const clearCut = margin > 0 && ruleResult.judgeable && !ruleResult.qualified && ruleResult.score <= ruleResult.threshold - margin && !hasBuyingSignal;
   if (clearCut) {
     recordAvoided("icpShortcut", campaign.id);
     return {

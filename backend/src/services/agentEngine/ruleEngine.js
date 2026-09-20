@@ -73,6 +73,7 @@ export function ruleScoreICP({ campaign, prospect }) {
     qualified,
     score,
     threshold,
+    judgeable: !!range, // the rules read an employee-count range; without one only an LLM can judge fit
     reasons,
     evidence,
     reasoning: qualified
@@ -178,5 +179,36 @@ export function ruleEnrich({ prospect }) {
     ...prospect,
     evidence: prospect.evidence?.length ? prospect.evidence : ["Enriched from an approved company database"],
     reasons: prospect.reasons?.length ? prospect.reasons : ["Awaiting ICP scoring"],
+  };
+}
+
+/** Research Agent (rule fallback): restates what is known as facts, hooks and gaps. Uses only the prospect's own data. */
+export function ruleResearch({ campaign, prospect }) {
+  const facts = [];
+  const add = (text, kind) => text && facts.push({ text, kind });
+  add(`${prospect.name} is ${prospect.title || "a contact"} at ${prospect.company}`, "profile");
+  add(prospect.industry && `${prospect.company} works in ${prospect.industry}`, "profile");
+  add(prospect.size && `${prospect.company} has ${prospect.size}`, "profile");
+  add(prospect.funding && `Funding: ${prospect.funding}`, "signal");
+  add(prospect.city && `Based in ${prospect.city}`, "context");
+  for (const t of prospect.tech || []) add(`Uses ${t}`, "context");
+  for (const [k, v] of Object.entries(prospect.attributes || {})) add(`${k}: ${v}`, "context");
+  const known = ((prospect.dossier && prospect.dossier.facts) || []).map((f) => f.text);
+
+  const hooks = [];
+  if (prospect.funding && /(seed|series|raised)/i.test(prospect.funding)) hooks.push(`Recent funding (${prospect.funding}) usually means new priorities and budget`);
+  if ((prospect.tech || []).length) hooks.push(`Their use of ${prospect.tech.slice(0, 2).join(" and ")} makes what we offer relevant`);
+  if (known.length) hooks.push(known[0]);
+
+  const gaps = [];
+  if (!prospect.size) gaps.push("How large the organisation is");
+  if (!prospect.funding && !(prospect.attributes && Object.keys(prospect.attributes).length)) gaps.push("Recent news or activity that gives a reason to write now");
+  if (!prospect.email || /\.example$/.test(prospect.email)) gaps.push("A confirmed contact address");
+  gaps.push("Whether they are the person who decides on this");
+
+  return {
+    summary: `${prospect.name}, ${prospect.title || "contact"} at ${prospect.company}. ${hooks[0] || "No specific reason to write now is known yet."}`,
+    facts, hooks: hooks.slice(0, 3), gaps: gaps.slice(0, 4), confidence: facts.length >= 5 ? "medium" : "low",
+    reasoning: "Restated the prospect's own data; nothing was added from outside it.",
   };
 }

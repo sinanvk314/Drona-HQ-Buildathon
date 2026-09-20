@@ -98,6 +98,30 @@ Rules:
 4. If is_last_touch is true, close the loop politely: say this is the last note and leave the door open.
 5. angle is 2-6 words naming the new fact you used. reasoning is 1-2 sentences.`;
 
+const RESEARCH_SYSTEM = `You are the Research agent in an autonomous SDR pipeline. You turn what is KNOWN about ONE prospect into a structured brief for the agents that write to them. You do NOT search and you do NOT know anything beyond the input.
+
+The user message is a JSON object with: person, company (the organisation), attributes, campaign (objective, offer, icp), dossier (facts and notes already recorded), knowledge, and optionally instruction.
+
+Rules:
+1. Use ONLY facts present in the input. Never invent a fact, number, event, achievement or connection. If something is not in the input, it is unknown.
+2. facts: restate the important known facts, each classified as profile (who they are), signal (a reason to reach out now) or context (background). Each fact must be traceable to the input.
+3. hooks: up to 3 reasons this person might care about the campaign's offer, each grounded in a fact from the input. If nothing in the input gives a reason, return fewer hooks rather than inventing one.
+4. gaps: up to 4 important things we do not know that would help (for example whether they decide on this, or recent activity).
+5. summary is 2 sentences. confidence is low, medium or high, by how much is actually known. reasoning is 1 sentence.`;
+
+const SOURCE_SYSTEM = `You are a people-search tool, imitating a search of a professional network or lead database. Given a description of a target audience, you return candidate people who match it. This tool is a stand-in used before real data sources are connected.
+
+IMPORTANT: every person and organisation you return must be FICTIONAL. Invent plausible names. Never return a real, famous or identifiable person, and never a real small organisation. Email addresses must end in ".example".
+
+The user message is a JSON object with: campaign (name, objective, offer, icp, personas, geography, company_criteria, exclusion_criteria), count, and avoid (names already returned).
+
+Rules:
+1. Return exactly count candidates. Most should match the audience closely; one or two should be near misses (a different seniority, size or region), as a real search would return.
+2. Vary them: different seniority, organisation size, region and situation. Do not repeat names or organisations, and do not use anything in avoid.
+3. Fit the audience even when it is not a company: if it is students, return students with their college and club; if it is doctors, clinics; and so on. organisation is the college, club, clinic or company.
+4. facts: 2 to 4 short, specific, plausible facts about each person (a role held, an activity, something recent). attributes: any other useful key/value details (for example college, year, club).
+5. size describes the organisation in plain words (for example "120 employees" or "about 3,000 students").`;
+
 // ---- response schemas (Gemini's OpenAPI-subset; upper-case type names) --------------------------
 
 const S = { type: "STRING" };
@@ -136,6 +160,37 @@ const CONVERSATION_SCHEMA = {
   type: "OBJECT",
   properties: { action: { type: "STRING", enum: ["meeting", "escalate", "followup"] }, reasoning: S, reply_draft: S },
   required: ["action", "reasoning", "reply_draft"],
+};
+
+const RESEARCH_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    summary: S,
+    facts: { type: "ARRAY", items: { type: "OBJECT", properties: { text: S, kind: { type: "STRING", enum: ["profile", "signal", "context"] } }, required: ["text", "kind"] } },
+    hooks: strings,
+    gaps: strings,
+    confidence: { type: "STRING", enum: ["low", "medium", "high"] },
+    reasoning: S,
+  },
+  required: ["summary", "facts", "hooks", "gaps", "confidence", "reasoning"],
+};
+
+const SOURCE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    candidates: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: S, title: S, organisation: S, email: S, industry: S, size: S, location: S, facts: strings,
+          attributes: { type: "ARRAY", items: { type: "OBJECT", properties: { key: S, value: S }, required: ["key", "value"] } },
+        },
+        required: ["name", "title", "organisation", "email", "industry", "size", "location", "facts"],
+      },
+    },
+  },
+  required: ["candidates"],
 };
 
 const strategySchema = (allowed, maxTouches) => ({
@@ -274,10 +329,46 @@ async function generate(args) {
   throw new GeminiError("no Gemini model configured (set GEMINI_MODEL)");
 }
 
-// ---- the three agents -------------------------------------------------------------------------
+const slug = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24) || "unknown";
+
+/** A research brief made safe to store: bounded, and only strings. */
+export function normalizeResearch(o) {
+  const strs = (a, n) => (Array.isArray(a) ? a : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, n);
+  const facts = (Array.isArray(o.facts) ? o.facts : [])
+    .map((f) => ({ text: String((f && f.text) || "").trim(), kind: ["profile", "signal", "context"].includes(f && f.kind) ? f.kind : "context" }))
+    .filter((f) => f.text)
+    .slice(0, 10);
+  if (!facts.length && !o.summary) throw new GeminiError("research output has no facts and no summary");
+  return { summary: String(o.summary || "").trim(), facts, hooks: strs(o.hooks, 3), gaps: strs(o.gaps, 4), confidence: ["low", "medium", "high"].includes(o.confidence) ? o.confidence : "low", reasoning: String(o.reasoning || "").trim() };
+}
+
+/** Candidates from the imitated search: fictional by construction, so emails are forced onto the reserved .example domain. */
+export function normalizeCandidates(o, { count, avoid = [] }) {
+  const seen = new Set(avoid.map((n) => String(n).toLowerCase()));
+  const out = [];
+  for (const c of Array.isArray(o.candidates) ? o.candidates : []) {
+    const name = String((c && c.name) || "").trim();
+    const org = String((c && c.organisation) || "").trim();
+    if (!name || !org || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const [first, ...rest] = name.split(/\s+/);
+    const email = /@[^\s]+\.example$/i.test(c.email || "") ? c.email.trim().toLowerCase() : `${slug(first)}.${slug(rest.join("")) || "x"}@${slug(org)}.example`;
+    out.push({
+      name, title: String(c.title || "").trim(), company: org, email, industry: String(c.industry || "").trim(), size: String(c.size || "").trim(), city: String(c.location || "").trim(),
+      facts: (Array.isArray(c.facts) ? c.facts : []).map((f) => String(f || "").trim()).filter(Boolean).slice(0, 4),
+      attributes: Object.fromEntries((Array.isArray(c.attributes) ? c.attributes : []).filter((a) => a && a.key && a.value).slice(0, 6).map((a) => [String(a.key).trim(), String(a.value).trim()])),
+    });
+    if (out.length >= count) break;
+  }
+  if (!out.length) throw new GeminiError("the search returned no usable candidates");
+  return out;
+}
+
+// ---- the agents -------------------------------------------------------------------------
 
 const baseInput = (campaign, prospect, promptText, knowledge) => ({
   ...personAndCompany(prospect),
+  attributes: prospect.attributes || {},
   campaign: campaignBlock(campaign),
   dossier: dossierFor(prospect),
   instruction: promptText,
@@ -324,4 +415,16 @@ export async function geminiHandleConversation({ campaign, prospect, promptText,
   };
   const out = await generate({ agent: "conversation", campaignId: campaign.id, system: CONVERSATION_SYSTEM, input, schema: CONVERSATION_SCHEMA });
   return normalizeConversation(out);
+}
+
+export async function geminiResearch({ campaign, prospect, promptText, override, knowledge }) {
+  const input = { ...baseInput(campaign, prospect, promptText, knowledge), campaign_override: override || null };
+  const out = await generate({ agent: "research", campaignId: campaign.id, system: RESEARCH_SYSTEM, input, schema: RESEARCH_SCHEMA });
+  return normalizeResearch(out);
+}
+
+export async function geminiSourceProspects({ campaign, count, avoid = [] }) {
+  const input = { campaign: { ...campaignBlock(campaign), company_criteria: campaign.companyCriteria, exclusion_criteria: campaign.exclusionCriteria }, count, avoid };
+  const out = await generate({ agent: "lead", campaignId: campaign.id, system: SOURCE_SYSTEM, input, schema: SOURCE_SCHEMA });
+  return normalizeCandidates(out, { count, avoid });
 }

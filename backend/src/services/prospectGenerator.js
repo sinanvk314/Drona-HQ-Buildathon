@@ -1,3 +1,4 @@
+import { newProspect } from "./prospects.js";
 // Synthetic "Lead Research & Enrichment" discovery — a stand-in for a real Apollo/data-provider
 // integration (PS's suggested tools list "Apollo or equivalent"; no external credentials are
 // available in this build, so new prospects are generated from the campaign's own targeting
@@ -21,11 +22,9 @@ function parseEmployeeRange(companyCriteria) {
   return m ? [Number(m[1]), Number(m[2])] : null;
 }
 
-let seq = 0;
 
 /** Generates one plausible new prospect for a campaign, biased toward the campaign's own ICP so it's a realistic mix of fits and misses. */
 export function generateProspect(campaign) {
-  seq += 1;
   const name = `${pick(FIRST)} ${pick(LAST)}`;
   const company = `${pick(COMPANY_ROOTS)}${pick(COMPANY_SUFFIX)}`;
   const persona = campaign.personas?.length ? pick(campaign.personas) : "Founder";
@@ -35,32 +34,20 @@ export function generateProspect(campaign) {
   const funding = pick(["Seed, $2M raised", "Series A, $12M raised", "Series B, $30M raised", "Pre-seed"]);
   const city = campaign.geography?.includes("India") ? pick(["Mumbai, IN", "Bengaluru, IN", "Pune, IN"]) : pick(["Austin, TX", "New York, NY", "Denver, CO", "Seattle, WA"]);
 
-  return {
-    id: `p_gen_${Date.now()}_${seq}`,
-    campaignId: campaign.id,
-    name,
-    title: onIcp ? persona : "Marketing Manager",
-    company,
-    email: `${name.split(" ")[0].toLowerCase()}@${company.toLowerCase().replace(/\s+/g, "")}.com`,
-    city,
-    linkedin: `linkedin.com/in/${name.toLowerCase().replace(/\s+/g, "")}`,
-    industry: pick(["SaaS", "Fintech", "DevOps", "Voice AI", "Data infrastructure"]),
-    size,
-    funding,
-    tech: onIcp ? [pick(["AWS", "GCP", "Azure"]), "Kubernetes"] : [pick(["AWS", "GCP"])],
-    stage: "researched",
-    fit: null,
-    channel: "—",
-    lastAction: "Enriched, {ago}",
-    lastTs: Date.now(),
-    nextStep: "ICP scoring",
-    reasons: ["Awaiting ICP scoring"],
-    evidence: ["Enriched from an approved company database"],
-    qual: { status: "Pending", reasoning: "Research complete; waiting for the ICP Fitment Agent.", agent: "Lead Research Agent", harness: "harness v2.0", ts: Date.now() },
-    history: [{ kind: "chat", text: "Research record completed by Lead Research Agent", when: "Today" }],
-    conversation: [],
-    touches: [],
-    plan: null,
-    nextTouchTs: null,
-  };
+  return newProspect(
+    campaign,
+    {
+      name,
+      title: onIcp ? persona : "Marketing Manager",
+      company,
+      email: `${name.split(" ")[0].toLowerCase()}@${company.toLowerCase().replace(/\s+/g, "")}.example`,
+      city,
+      linkedin: `linkedin.com/in/${name.toLowerCase().replace(/\s+/g, "")}`,
+      industry: pick(["SaaS", "Fintech", "DevOps", "Voice AI", "Data infrastructure"]),
+      size,
+      funding,
+      tech: onIcp ? [pick(["AWS", "GCP", "Azure"]), "Kubernetes"] : [pick(["AWS", "GCP"])],
+    },
+    { provider: "synthetic generator", real: false, note: "Made-up company-style prospect (no API needed)" }
+  );
 }

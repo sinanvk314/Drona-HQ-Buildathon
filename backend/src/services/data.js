@@ -944,7 +944,9 @@ export function getBlueprint(id) {
     steps,
     tools: [
       { name: "Knowledge retrieval", status: c.sources.length ? "on" : "empty", note: `${c.sources.length} source${c.sources.length === 1 ? "" : "s"} searched by meaning before every decision` },
-      { name: "Prospect sourcing", status: "simulated", note: "Synthetic prospects today; real sources are on the roadmap" },
+      c.mode === "single"
+        ? { name: "Prospect sourcing", status: "on", note: "Single-target: the campaign is aimed at one named person, entered by a person" }
+        : { name: "Prospect sourcing", status: "simulated", note: c.sourcing === "simulated-search" ? "Imitated people search: an AI acts as a search tool and returns fictional people that match the audience" : "Free generator of made-up company prospects. Real data sources are on the roadmap" },
       { name: "Reply routing", status: "on", note: "Clear opt-outs, hostile replies and out-of-office handled without an LLM" },
       { name: "Grounding check", status: "on", note: "Every draft is checked against the knowledge and the dossier before it can go out" },
       ...c.channels.map((k) => ({ name: `Channel: ${k}`, status: s.channels.some((x) => x.key === k && x.enabled) ? "simulated" : "off", note: s.channels.some((x) => x.key === k && x.enabled) ? "Sends are recorded, not delivered" : "Paused platform-wide" })),

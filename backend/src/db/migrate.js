@@ -10,7 +10,7 @@ export function migrate(state, now = Date.now()) {
   const fresh = buildSeed(now);
 
   // Agents introduced after the first release, inserted next to their neighbours.
-  const insertAfter = { strategy: "icp", followup: "conversation" };
+  const insertAfter = { research: "lead", strategy: "icp", followup: "conversation" };
   for (const id of Object.keys(insertAfter)) {
     if (state.agents.some((a) => a.id === id)) continue;
     const agent = fresh.agents.find((a) => a.id === id);
@@ -26,6 +26,12 @@ export function migrate(state, now = Date.now()) {
       c.offer = seeded ? seeded.offer : c.description || c.objective || "";
       changed = true;
     }
+  }
+
+  // How each campaign finds people, and whether it is aimed at a group or one named person.
+  for (const c of state.campaigns) {
+    if (!c.sourcing) { c.sourcing = "synthetic"; changed = true; }
+    if (!c.mode) { c.mode = "bulk"; changed = true; }
   }
 
   for (const c of state.campaigns) {

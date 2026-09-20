@@ -36,6 +36,8 @@ function allowedText({ knowledge = [], prospect = {}, campaign = {} }) {
     prospect.name, prospect.title, prospect.company, prospect.industry, prospect.size, prospect.funding, prospect.city,
     ...(prospect.tech || []), ...(prospect.reasons || []), ...(prospect.evidence || []),
     ...(prospect.history || []).map((h) => h.text),
+    ...Object.values(prospect.attributes || {}),
+    ...((prospect.dossier && prospect.dossier.facts) || []).map((f) => f.text),
     ...(prospect.conversation || []).map((m) => m.text),
     campaign.icpText, campaign.description, campaign.companyCriteria, campaign.offer,
   ];
