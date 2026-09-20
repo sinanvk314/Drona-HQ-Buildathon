@@ -1,0 +1,2978 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Autonomous SDR: project report</title><style>
+body{font-family:Calibri,Segoe UI,Arial,sans-serif;max-width:900px;margin:40px auto;padding:0 24px;line-height:1.55;color:#101828;font-size:11pt}
+h1{font-size:24pt;border-bottom:2px solid #2453E6;padding-bottom:8px} h2{font-size:17pt;margin-top:34px;border-bottom:1px solid #C7D0DC;padding-bottom:4px}
+h3{font-size:13.5pt;margin-top:22px} h4{font-size:12pt;margin-top:18px}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:10pt} th,td{border:1px solid #C7D0DC;padding:6px 9px;vertical-align:top;text-align:left} th{background:#EEF1F5}
+code{background:#F2F4F7;padding:1px 4px;border-radius:3px;font-size:9.5pt} pre{background:#F2F4F7;padding:12px;overflow:auto;font-size:8.5pt;line-height:1.25} pre code{background:none;padding:0}
+hr{border:0;border-top:1px solid #E3E8EF;margin:26px 0}
+</style></head><body><h1 id="autonomous-sdr-project-report">Autonomous SDR: project report</h1>
+<p><strong>Inter Guild Buildathon 2026 · Tech Contingent, IIT Madras × DronaHQ</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Live application</strong></td>
+<td>https://drona-hq-buildathon.onrender.com/</td>
+</tr>
+<tr>
+<td><strong>Repository</strong></td>
+<td>https://github.com/sinanvk314/Drona-HQ-Buildathon</td>
+</tr>
+<tr>
+<td><strong>Team</strong></td>
+<td>Shubh Gupta (control-plane UI and the first backend), Mohammed Sinan (agents and prompts, knowledge and retrieval, matching and cost control, real channels, measurement, deployment), with product planning and wireframes by a third teammate</td>
+</tr>
+<tr>
+<td><strong>Build window</strong></td>
+<td>51 hours, Fri 18 Sep 2026, 9:00 PM to Sun 20 Sep 2026, 11:59 PM</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#1-executive-summary">Executive summary</a></li>
+<li><a href="#2-how-this-report-maps-to-the-judging-rubric">How this report maps to the judging rubric</a></li>
+<li><a href="#3-problem-and-approach">Problem and approach</a></li>
+<li><a href="#4-system-architecture">System architecture</a></li>
+<li><a href="#5-control-plane-every-requirement-in-section-3-of-the-brief">Control plane: every requirement in Section 3 of the brief</a></li>
+<li><a href="#6-intelligence-layer-every-requirement-in-section-4-of-the-brief">Intelligence layer: every requirement in Section 4 of the brief</a></li>
+<li><a href="#7-how-dronahq-is-used">How DronaHQ is used</a></li>
+<li><a href="#8-beyond-the-brief-the-extras-we-built">Beyond the brief: the extras we built</a></li>
+<li><a href="#9-one-sdr-across-channels">One SDR across channels</a></li>
+<li><a href="#10-context-and-personalisation-without-hallucination">Context and personalisation without hallucination</a></li>
+<li><a href="#11-end-to-end-sdr-capability">End-to-end SDR capability</a></li>
+<li><a href="#12-product-and-user-experience">Product and user experience</a></li>
+<li><a href="#13-engineering-quality">Engineering quality</a></li>
+<li><a href="#14-measurement-and-optimisation">Measurement and optimisation</a></li>
+<li><a href="#15-cost-and-performance">Cost and performance</a></li>
+<li><a href="#16-what-works-what-is-partial-what-was-skipped">What works, what is partial, what was skipped</a></li>
+<li><a href="#17-known-limitations-and-trade-offs">Known limitations and trade-offs</a></li>
+<li><a href="#18-how-a-judge-can-verify-every-claim">How a judge can verify every claim</a></li>
+<li><a href="#19-team-process-and-timeline">Team, process and timeline</a></li>
+<li><a href="#20-appendices">Appendices</a></li>
+</ol>
+<hr />
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>We built <strong>one autonomous SDR system in two halves that behave as one product</strong>: a <strong>control plane</strong> where a human manager creates, launches, pauses and monitors several concurrent campaigns, and an <strong>intelligence layer</strong> of agents that discover, research, qualify, personalise, contact, follow up with and respond to prospects inside those campaigns. It is deployed as a single live service (one URL) and the code is a single repository.</p>
+<p>Three ideas run through everything:</p>
+<ol>
+<li><strong>Matching versus judgment.</strong> Every decision is either <em>matching</em> ("how alike are two things?", settled by local embeddings and rules, free) or <em>judgment</em> ("given the evidence, what is the right call and why?", which needs an LLM). Only judgments spend model calls. This is our answer to cost, and to correctness: a hard rule such as "50 to 500 employees" or an opt-out must never be blurred into a similarity score.</li>
+<li><strong>One SDR, not seven bots.</strong> Every agent reads the same <strong>Prospect Dossier</strong> before acting and writes a plain-language <strong>hand-off note</strong> after acting, so the system behaves like a single salesperson who remembers everything.</li>
+<li><strong>The manager is always in control, and the system is honest.</strong> Pause at four levels, approval levels that decide when a human must approve, hard limits no agent can override, and a clear separation between what is <em>real</em> and what is <em>simulated</em> on every screen.</li>
+</ol>
+<p><strong>By the numbers (from the repository at submission):</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Commits</td>
+<td>60, on one shared <code>main</code></td>
+</tr>
+<tr>
+<td>Backend source</td>
+<td>about 7,300 lines of Node, in <code>services/</code>, <code>routes/</code>, <code>db/</code>, <code>middleware/</code></td>
+</tr>
+<tr>
+<td>Frontend source</td>
+<td>about 6,000 lines of React, 14 screens</td>
+</tr>
+<tr>
+<td>Automated tests</td>
+<td><strong>187 tests in 21 files</strong>, all passing, plus 13 Python tests for the standalone matching service</td>
+</tr>
+<tr>
+<td>API</td>
+<td>79 endpoints</td>
+</tr>
+<tr>
+<td>Agents</td>
+<td>8 (Lead Research, Research, ICP Fitment, Outreach Strategy, Personalisation, Conversation, Follow-up, Voice SDR), each with versioned prompts</td>
+</tr>
+<tr>
+<td>Documentation</td>
+<td>README, a 23-section system guide, a roadmap, a demo script (about 15,000 words)</td>
+</tr>
+<tr>
+<td>LLM spending</td>
+<td>a hard daily cap on model calls, per-campaign token and cost accounting, and a live efficiency panel; the free Gemini tier means near-zero marginal cost</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What is fully working:</strong> three concurrent campaigns with independent state; campaign, agent, channel and global pause; the full autonomous loop from discovery to a booked meeting; prompt versioning with the active version recorded on every decision; per-campaign RAG; approval levels; conflict and suppression handling; real email through the Gmail API with human approval; measurement of every agent by prompt version; and a <strong>judge sandbox</strong> where a real person plays the prospect and the SDR has to earn a meeting.</p>
+<p><strong>What is partial or skipped, stated plainly:</strong> discovery uses an AI-imitated people search (simulated) or hand-entered real contacts, not Apollo; LinkedIn is simulated; SMS and voice are built and tested against fake Twilio servers but were not run against live Twilio; the DronaHQ agent path exists but the platform's webhook returned no output to our backend in our tests, so decisions run on Gemini with a deterministic rule engine as the safety net. Section 16 gives the full table.</p>
+<hr />
+<h2 id="2-how-this-report-maps-to-the-judging-rubric">2. How this report maps to the judging rubric</h2>
+<p>The brief scores eight categories. This table says where each one is answered and what the strongest evidence is.</p>
+<table>
+<thead>
+<tr>
+<th>Category (points)</th>
+<th>What it asks</th>
+<th>Where in this report</th>
+<th>Strongest evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multi-Channel SDR Intelligence (25)</strong></td>
+<td>Does it coordinate LinkedIn, email, SMS and voice like one SDR rather than five bots?</td>
+<td>§9, §8 (extras E5, E12, E13)</td>
+<td>A per-prospect plan chosen by the Strategy agent, one shared dossier, one cadence policy with hard limits, real Gmail and Twilio adapters behind one <code>dispatch</code> function</td>
+</tr>
+<tr>
+<td><strong>DronaHQ Usage (15)</strong></td>
+<td>Is DronaHQ meaningfully core, not a UI wrapper?</td>
+<td>§7</td>
+<td>Control-plane UI started in DronaHQ Studio; agents designed, instructed, given knowledge and variables, published and tested on the Agentic AI platform; a tested adapter; an honest account of the platform limit we hit</td>
+</tr>
+<tr>
+<td><strong>Context and Personalisation (15)</strong></td>
+<td>Do agents understand the prospect before acting, without hallucinating?</td>
+<td>§10, §8 (E4, E5, E6)</td>
+<td>Dossier, Research agent that never invents, grounding check on every draft, retrieval before every important decision</td>
+</tr>
+<tr>
+<td><strong>End-to-End SDR Capability (15)</strong></td>
+<td>Find, research, qualify, contact, follow up, respond, book or escalate: how much really works?</td>
+<td>§11</td>
+<td>The judge sandbox: a real person replies, the SDR proposes real times, books one, and produces a calendar invite</td>
+</tr>
+<tr>
+<td><strong>Product and User Experience (10)</strong></td>
+<td>Could a real sales team pick it up?</td>
+<td>§12</td>
+<td>14 screens, launch review, approval queue, decision journal, agents and prompts editor, knowledge library</td>
+</tr>
+<tr>
+<td><strong>Software and Engineering Quality (10)</strong></td>
+<td>Architecture, modularity, reliability, error handling, security</td>
+<td>§13</td>
+<td>187 tests, failure containment per stage, signed webhooks, secrets out of Git, additive migrations with backups</td>
+</tr>
+<tr>
+<td><strong>Measurement and Optimisation (5)</strong></td>
+<td>Can you measure and improve the system's own performance?</td>
+<td>§14, §15</td>
+<td>Success rate of every agent by campaign and prompt version, campaign health with suggestions, cost per prospect and per qualified lead, golden-set evaluation</td>
+</tr>
+<tr>
+<td><strong>Innovation / Extra Thinking (5)</strong></td>
+<td>Ideas beyond the obvious</td>
+<td>§8</td>
+<td>Twenty-plus extras, led by the LLM-as-search-tool, the judge sandbox and the real/simulated switch</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-problem-and-approach">3. Problem and approach</h2>
+<h3 id="31-the-problem-as-we-read-it">3.1 The problem as we read it</h3>
+<p>Sales development is manual, repetitive and inconsistent: reps research prospects, personalise outreach, chase replies across four channels and log everything by hand. The brief asks for a system where AI agents do this autonomously while a human manager stays fully in control, and it says one question will keep coming back: <em>"How close is this to a real SDR working autonomously across multiple channels?"</em></p>
+<p>We turned that into four questions we could test ourselves against:</p>
+<ol>
+<li><strong>Can a manager understand and stop everything, quickly?</strong> (control plane)</li>
+<li><strong>Does each agent know the prospect before it acts, and can it explain why?</strong> (context, evidence, journal)</li>
+<li><strong>Does it keep going when things fail, and stay affordable?</strong> (reliability, cost)</li>
+<li><strong>Does the loop close?</strong> A prospect is found, researched, qualified, contacted, replies, and a meeting is booked, with a human only where a human should be.</li>
+</ol>
+<h3 id="32-design-principles">3.2 Design principles</h3>
+<table>
+<thead>
+<tr>
+<th>Principle</th>
+<th>What it means in the product</th>
+<th>Why we chose it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Matching before judgment</strong></td>
+<td>Embeddings and rules answer "how alike?" and "does this hard rule apply?"; the LLM answers "what is the right call, given evidence?"</td>
+<td>Cost, speed, and correctness: numeric thresholds do not survive being turned into an embedding</td>
+</tr>
+<tr>
+<td><strong>One SDR, one memory</strong></td>
+<td>A shared dossier read by every agent, a hand-off note written by every agent</td>
+<td>Prevents five disconnected bots stapling reports together, which the brief warns about</td>
+</tr>
+<tr>
+<td><strong>Humans decide what matters</strong></td>
+<td>Approval levels, escalation that always needs a human, four levels of pause, a global kill switch</td>
+<td>The brief's core requirement, and what makes a real team trust it</td>
+</tr>
+<tr>
+<td><strong>Nothing is hidden</strong></td>
+<td>Every decision records the agent, prompt version, evidence, retrieved sources and which engine decided; every fallback says why</td>
+<td>Managers must be able to answer "why did the agent do that?"</td>
+</tr>
+<tr>
+<td><strong>Fail soft, never fail silent</strong></td>
+<td>Malformed model output, quota exhaustion and outages end in a deterministic decision or a visible hold, and the reason is recorded</td>
+<td>The brief: "handle malformed model output, failed API calls and empty states without crashing"</td>
+</tr>
+<tr>
+<td><strong>Honest about real versus simulated</strong></td>
+<td>Every prospect says where it came from; every message says whether it was really sent</td>
+<td>A demo that quietly fakes things cannot be trusted; a judge can check every claim on the live site</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-what-we-did-first-and-what-changed">3.3 What we did first, and what changed</h3>
+<ul>
+<li><strong>Hour 0 to 6:</strong> decided the matching/judgment split, defined the shared JSON output contract every agent uses, and built and tested a standalone Python matching service (three endpoints: rank candidate companies against an ICP, pick the best contact, classify replies) with 13 tests. The first embedding provider was OpenAI; with no budget for API billing we moved to <strong>fastembed with <code>BAAI/bge-small-en-v1.5</code></strong>, which runs on the CPU in-process and needs no key and no billing.</li>
+<li><strong>In parallel:</strong> the control-plane UI and a first backend were built by Shubh (a DronaHQ Studio app talking to a Node API with a scheduler that advances prospects on its own).</li>
+<li><strong>Integration:</strong> the matching logic was re-implemented inside the Node backend (one process, one deployment, no cross-service latency), the agents were given a common engine interface, and a chain of engines (DronaHQ, Gemini, rules) was added.</li>
+<li><strong>Hardening:</strong> grounding, hard limits, reps, approvals, prompt versioning, sign-in and deployment, then the intelligence and measurement extras, then real channels.</li>
+</ul>
+<p>The standalone Python service is kept in the repository as tested reference code; the running application does not call it (Section 17 explains that trade-off).</p>
+<hr />
+<h2 id="4-system-architecture">4. System architecture</h2>
+<h3 id="41-the-picture">4.1 The picture</h3>
+<pre><code>                                   MANAGER'S BROWSER
+                                          |
+                    +---------------------v----------------------+
+                    |   React + Vite control plane (14 screens)   |
+                    |  Command Center · Campaigns · Prospects ·   |
+                    |  Approvals · Decision Journal · Agents &amp;    |
+                    |  Prompts · Knowledge · Representatives ·    |
+                    |  Compare/Analytics · Dev · Settings         |
+                    +---------------------+----------------------+
+                                          | REST (79 endpoints, signed session)
+    TWILIO (SMS, voice) ---signed---+     |
+    webhooks                        v     v
+                    +------------------------------------------------+
+                    |               NODE + EXPRESS BACKEND            |
+                    |  routes -&gt; services (campaigns, approvals,      |
+                    |  prompts, reps, knowledge, analytics, dev)      |
+                    +---------------------+--------------------------+
+                                          |
+   +--------------------------------------v-----------------------------------------+
+   | AUTONOMOUS SCHEDULER: every 12 s, for EACH Live campaign independently         |
+   |                                                                                 |
+   |  GATES  kill switch -&gt; campaign Live -&gt; agent enabled (platform + campaign)     |
+   |         -&gt; channel enabled -&gt; conflict / suppression -&gt; hard limits             |
+   |                                                                                 |
+   |  1 Discovery -&gt; 2 Research -&gt; 3 ICP Fitment -&gt; 4 Outreach Strategy -&gt;           |
+   |  5 Personalisation -&gt; [Approvals queue: human] -&gt; send -&gt;                       |
+   |  6 Conversation (reply router first) -&gt; 7 Follow-up -&gt; (Voice SDR, real only)   |
+   +-------+-------------------------------------+-----------------------------------+
+           |                                     |
+           |  every important decision           |  every outbound message
+           v                                     v
+   +---------------------------+      +---------------------------------------------+
+   | RETRIEVE (per campaign)   |      | dispatch (real campaigns only)               |
+   | local embeddings, cosine  |      | Gmail API · Twilio SMS · Twilio Voice        |
+   | over that campaign's own  |      | + human approval + allow-list + real switch  |
+   | knowledge sources         |      | replies come back via inbox polling / signed |
+   +-------------+-------------+      | webhooks and re-enter the loop               |
+                 |                    +---------------------------------------------+
+                 v
+   +----------------------------------------------------------------------+
+   | DECIDE: engine chain   dronahq &gt; gemini &gt; rule   (rule always last)  |
+   |  structured JSON output · grounding check · one rewrite retry        |
+   |  every fallback records WHY it happened                              |
+   +---------------------------+------------------------------------------+
+                               v
+   +----------------------------------------------------------------------+
+   | RECORD: Decision Journal (agent, prompt version, evidence, sources,  |
+   | engine) · Prospect Dossier (facts + hand-off notes) · usage and cost |
+   +---------------------------+------------------------------------------+
+                               v
+   +----------------------------------------------------------------------+
+   | STATE: one JSON document (file locally, one row in Neon Postgres in   |
+   | production) · additive migrations · automatic backups                 |
+   +----------------------------------------------------------------------+
+</code></pre>
+<h3 id="42-components-and-what-each-is-responsible-for">4.2 Components and what each is responsible for</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Location</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Control-plane UI</strong></td>
+<td><code>frontend/</code></td>
+<td>14 screens; every backend call is one function in <code>services/api.js</code>; a session-token layer; error boundaries and load states so no screen is ever blank</td>
+</tr>
+<tr>
+<td><strong>API</strong></td>
+<td><code>backend/src/routes/</code></td>
+<td>Thin: each endpoint calls a service function. Auth middleware in front; Twilio webhooks are separate and verified by signature</td>
+</tr>
+<tr>
+<td><strong>Services</strong></td>
+<td><code>backend/src/services/</code></td>
+<td>The business logic: campaigns and lifecycle, approvals, prompts, reps, knowledge, analytics, dev tools, meetings, limits, conflict handling, grounding</td>
+</tr>
+<tr>
+<td><strong>Scheduler</strong></td>
+<td><code>services/scheduler.js</code>, <code>sdrSteps.js</code></td>
+<td>The autonomous loop. <code>sdrSteps.js</code> defines the pipeline once; the scheduler runs it and the UI's SDR Blueprint shows the same list</td>
+</tr>
+<tr>
+<td><strong>Agent engines</strong></td>
+<td><code>services/agentEngine/</code></td>
+<td>One interface, four implementations: DronaHQ webhook adapter, Google Gemini, Anthropic (optional), and the deterministic rule engine. <code>index.js</code> walks the chain</td>
+</tr>
+<tr>
+<td><strong>Retrieval</strong></td>
+<td><code>services/rag.js</code>, <code>embeddings.js</code></td>
+<td>Chunking, local embeddings, cosine ranking scoped to one campaign; keyword fallback if the model cannot load</td>
+</tr>
+<tr>
+<td><strong>Reply router</strong></td>
+<td><code>services/replyRouter.js</code></td>
+<td>Embedding similarity to canonical example replies decides clear-cut opt-outs, hostility and out-of-office with no LLM call</td>
+</tr>
+<tr>
+<td><strong>Channels</strong></td>
+<td><code>services/channels/</code></td>
+<td>Gmail API client, Twilio client, the Voice SDR turn-by-turn loop, and <code>dispatch</code>, the single place a recorded message becomes a real one</td>
+</tr>
+<tr>
+<td><strong>Storage</strong></td>
+<td><code>backend/src/db/</code></td>
+<td>One state document, persisted to a JSON file or to Neon Postgres; additive migrations; backups</td>
+</tr>
+<tr>
+<td><strong>Standalone matching service</strong></td>
+<td><code>matching-service/</code></td>
+<td>The original Python/FastAPI prototype of the matching logic, with tests; kept as reference</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-the-data-model-in-plain-words">4.3 The data model in plain words</h3>
+<ul>
+<li><strong>Campaign:</strong> identity, mode (an audience, or one named person), data mode (real or simulated), audience kind (organisations or individuals), targeting, channels, limits, cadence, approval policy, reps, knowledge sources, a versioned system prompt, prompt pins, per-agent overrides, persona (tone and sign-off), funnel and outcome counters, failures.</li>
+<li><strong>Prospect:</strong> a person at an organisation (or an individual), free-form attributes, where they came from and whether that is real, stage, ICP fit and reasoning, plan, touches, conversation, meeting, and the <strong>dossier</strong>.</li>
+<li><strong>Dossier:</strong> facts (each with its source), reasons to reach out ("hooks"), gaps (what is not known), and one <strong>hand-off note</strong> per agent action that records the agent, the prompt version, the engine and, when the rules answered because the model did not, the reason.</li>
+<li><strong>Decision:</strong> one Decision Journal entry per meaningful action, with evidence, retrieved knowledge and the prompt version.</li>
+<li><strong>Approval:</strong> a draft or a meeting proposal waiting for a human, with the grounding result.</li>
+</ul>
+<h3 id="44-deployment">4.4 Deployment</h3>
+<p>The backend serves the API, the scheduler and the built UI from <strong>one Render web service on one URL</strong>. State lives in <strong>Neon Postgres</strong> (Render's free tier has no persistent disk) as a single JSON document, chosen for speed of delivery under a 51-hour clock. A free UptimeRobot monitor pings <code>/health</code> to keep the free host awake. A Dockerfile is provided for any container host. <code>backend/scripts/smoke.mjs</code> checks a live deployment, including the required "pausing one campaign does not stop the others" demonstration.</p>
+<hr />
+<h2 id="5-control-plane-every-requirement-in-section-3-of-the-brief">5. Control plane: every requirement in Section 3 of the brief</h2>
+<p>This section walks through the brief's "Campaign Management and Control Plane" requirements one by one, says what we built, and says why we built it that way.</p>
+<h3 id="51-multiple-concurrent-campaigns">5.1 Multiple concurrent campaigns</h3>
+<p><strong>What the brief asks:</strong> several campaigns at once, each aimed at its own ICP, with its own objectives, agents, prompts, policies and channel configuration, all sharing platform infrastructure.</p>
+<p><strong>What we built:</strong> the scheduler treats every Live campaign as an independent unit of work. On each 12-second tick it visits each Live campaign in turn and runs the seven pipeline steps inside its own error boundary, so a failure or a slow model call in one campaign cannot stop another. Each campaign carries its own targeting, channels, cadence, limits, approval policy, knowledge sources, system prompt, prompt pins, agent overrides, persona and reps. What is deliberately shared is the platform: the agents' library prompts, the integrations, the global suppression list, the global controls and the model quota.</p>
+<p><strong>Why:</strong> the brief calls for "each campaign operates independently while sharing common infrastructure". Per-campaign loops with per-stage error containment is the simplest design that makes independence true rather than claimed.</p>
+<h3 id="52-campaign-as-a-first-class-object">5.2 Campaign as a first-class object</h3>
+<table>
+<thead>
+<tr>
+<th>Brief requires</th>
+<th>What a campaign carries in our system</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Identity:</strong> name, description, owner, status, created and last-modified dates</td>
+<td>All of them; the owner defaults to the signed-in user; every edit updates the modified date; status is one of Draft, Live, Paused, Completed, Archived</td>
+</tr>
+<tr>
+<td><strong>Targeting:</strong> ICP, geography, roles, company criteria, exclusion criteria, reference profiles</td>
+<td>ICP text, geography, target personas, company criteria, exclusion criteria, and knowledge sources. Reference profiles are covered by knowledge sources and by the Dev tab's real-data tests, not by a dedicated field</td>
+</tr>
+<tr>
+<td><strong>Agent configuration:</strong> which agents are enabled, responsibilities, tools, policies, decision thresholds, escalation rules</td>
+<td>Per-campaign agent switches; each agent's purpose, inputs and outputs shown on the campaign's SDR Blueprint; qualification criteria with a score threshold; approval level with its thresholds; an escalation rule that always requires a human; cadence and hard limits</td>
+</tr>
+<tr>
+<td><strong>System prompts and harness:</strong> a campaign-level prompt plus agent prompts for qualification, research, personalisation, outreach, follow-up, response handling, guardrails and escalation</td>
+<td>A versioned <strong>campaign system prompt</strong> (written on the create form as the "campaign brief"), plus each agent's library prompt version pinned to the campaign, plus an optional per-campaign extra instruction per agent. The fixed guardrails are visible on the Agents page</td>
+</tr>
+</tbody>
+</table>
+<p>Two additions the brief did not ask for but a real team needs: <strong>what we offer</strong> (each campaign defines its own offer, so agents may only make claims that appear in it or in the knowledge base) and a <strong>persona</strong> (tone and sign-off).</p>
+<h3 id="53-campaign-lifecycle">5.3 Campaign lifecycle</h3>
+<pre><code>   Draft ---&gt; Live &lt;---&gt; Paused ---&gt; Completed ---&gt; Archived
+     |                      |                            ^
+     +----------------------+----------------------------+
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>What the system does</th>
+<th>How it is enforced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Draft</strong></td>
+<td>Being configured. Never sends.</td>
+<td>The scheduler only visits campaigns whose status is Live</td>
+</tr>
+<tr>
+<td><strong>Live</strong></td>
+<td>Agents discover, research, qualify and contact per configuration</td>
+<td>Every step passes the gates in section 4.1</td>
+</tr>
+<tr>
+<td><strong>Paused</strong></td>
+<td>All autonomous execution stops. Prospect and conversation data are kept. Can be resumed</td>
+<td>The scheduler skips the campaign. A campaign records a "last worked on" timestamp on every tick, and a paused one stops updating it, which is how we prove it stopped</td>
+</tr>
+<tr>
+<td><strong>Completed / Archived</strong></td>
+<td>No longer active; history, decisions and analytics stay available</td>
+<td>Completing withdraws pending approvals (nothing more may be sent from a finished campaign); archiving removes it from the dashboard, feed and journal while keeping the data</td>
+</tr>
+</tbody>
+</table>
+<p>Illegal transitions are refused by one function (<code>canTransition</code>), so a UI bug cannot put a campaign into an impossible state.</p>
+<h3 id="54-campaign-control">5.4 Campaign control</h3>
+<p>An authorised user can <strong>create, edit, launch, pause, resume, complete, archive and duplicate</strong> a campaign, and view its configuration, activity and performance. A prominent Pause/Resume control sits on the campaign dashboard and on each campaign card, and the state of every campaign is visible at a glance by colour: Live is blue, Paused is grey, Completed is green.</p>
+<p><strong>What a manager sees before activating (a design question in the brief):</strong> a <strong>launch review</strong> that lists blocking problems, warnings and passes: settings complete, the offer stated, the kill switch, channels enabled, knowledge present, agents enabled, overlap with other running campaigns (same roles in the same region), reps assigned, the approval policy, and, for real campaigns, whether real sending is ready. A blocking item prevents launch; a warning lets a manager proceed knowingly.</p>
+<h3 id="55-campaign-isolation-and-conflict-handling">5.5 Campaign isolation and conflict handling</h3>
+<p><strong>Isolation.</strong> A campaign's ICP, prompts, agent configuration, policies, targeting, activity, metrics and decision history are separate. In particular a change to one campaign's prompts cannot change another's: the campaign system prompt is per campaign; a campaign is <strong>pinned</strong> to a specific library version of each agent's prompt, so publishing a new library version changes nothing that is running; and overrides are stored per campaign. Retrieval only ever searches the given campaign's own knowledge sources.</p>
+<p><strong>Conflicts the brief lists, and how each is handled:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Conflict</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Duplicate outreach</strong></td>
+<td>Every prospect is checked against every other campaign before first contact; an identical email cannot be contacted twice</td>
+</tr>
+<tr>
+<td><strong>Two campaigns targeting the same prospect</strong></td>
+<td>A <strong>14-day rule</strong>: one campaign per prospect within 14 days. The second campaign is blocked, the block is written to the Decision Journal by a "Conflict Resolution" step, and the prospect is not contacted</td>
+</tr>
+<tr>
+<td><strong>Conflicting instructions</strong></td>
+<td>The launch review warns when a new campaign overlaps a running one (same roles in the same region), so a manager resolves it before launch</td>
+</tr>
+<tr>
+<td><strong>Excessive contact frequency</strong></td>
+<td>A <strong>frequency cap</strong>: at most 4 touches to one person in any 7 days across all campaigns</td>
+</tr>
+<tr>
+<td><strong>Do-not-contact</strong></td>
+<td>A <strong>global suppression list</strong> checked before first contact and again before every follow-up (someone may be added mid-campaign). An opt-out in a reply, or on a phone call, is added automatically</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The resolution mechanism</strong> is deliberately simple and visible: the blocked action never happens, the reason is recorded in the journal, and the manager can see it and act (for example by removing someone from a list or changing a campaign's targeting).</p>
+<h3 id="56-campaign-dashboard">5.6 Campaign dashboard</h3>
+<p>Each campaign has its own operational dashboard, covering every item in the brief:</p>
+<table>
+<thead>
+<tr>
+<th>Brief item</th>
+<th>On the dashboard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Status:</strong> Live/Paused/Draft, owner, ICP, active channels, active reps</td>
+<td>Status badge, owner, ICP summary, channels, assigned reps, working hours, a prominent Pause/Resume</td>
+</tr>
+<tr>
+<td><strong>Prospect funnel</strong></td>
+<td>Discovered, Researched, Qualified, Contacted, Engaged, Meeting. <strong>Opportunity</strong> exists in the data model but is not shown: nothing the SDR does produces one (a meeting is the last step it reaches), so the column was always empty and told a manager nothing</td>
+</tr>
+<tr>
+<td><strong>Outreach activity</strong></td>
+<td>Emails, LinkedIn actions, follow-ups, replies</td>
+</tr>
+<tr>
+<td><strong>Agent activity</strong></td>
+<td>Workflows in flight, workflows completed (each is a Decision Journal entry), <strong>failed</strong> workflows (contained and counted), pending approvals and escalations</td>
+</tr>
+<tr>
+<td><strong>Outcomes</strong></td>
+<td>Positive, negative and neutral responses, meetings booked, and conversion rates (qualify rate, reply rate, meeting rate)</td>
+</tr>
+</tbody>
+</table>
+<p>The campaign page also carries the panels a manager needs to change the campaign: the <strong>SDR Blueprint</strong> (the whole pipeline in one place), prompts and harness, agents, reps, knowledge, and an activity timeline.</p>
+<h3 id="57-global-versus-campaign-level-configuration">5.7 Global versus campaign-level configuration</h3>
+<table>
+<thead>
+<tr>
+<th>Global (platform-wide)</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authentication</td>
+<td>Sign-in with a name and an optional access code; signed session tokens</td>
+</tr>
+<tr>
+<td>Integration credentials</td>
+<td>Environment variables only, never in the repository or the UI; Settings shows what is really connected, read from the running configuration</td>
+</tr>
+<tr>
+<td>Available models and tools</td>
+<td>Engine chain and Gemini model list in configuration; shown on Dev, Runtime</td>
+</tr>
+<tr>
+<td>Org and security policies</td>
+<td>Global controls (kill switch, agent and channel switches), the daily LLM cap</td>
+</tr>
+<tr>
+<td>Common knowledge base</td>
+<td>The knowledge <strong>library</strong> (one place to see every source and give it to any campaign)</td>
+</tr>
+<tr>
+<td>Global suppression / do-not-contact list</td>
+<td>Settings</td>
+</tr>
+<tr>
+<td>Platform-level guardrails</td>
+<td>The fixed system prompt of every agent, and the grounding check</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Campaign-level</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICP, geography, personas, objective, offer</td>
+<td>Create/Edit form</td>
+</tr>
+<tr>
+<td>Prompts and agent instructions</td>
+<td>Prompts and Harness panel</td>
+</tr>
+<tr>
+<td>Outreach and follow-up strategy</td>
+<td>Cadence (touches and wait), per-prospect plan by the Strategy agent</td>
+</tr>
+<tr>
+<td>Qualification criteria</td>
+<td>The qualification prompt and threshold</td>
+</tr>
+<tr>
+<td>Campaign-specific knowledge</td>
+<td>Knowledge panel</td>
+</tr>
+<tr>
+<td>Channel configuration, daily limits, working hours</td>
+<td>Channels and Limits card</td>
+</tr>
+<tr>
+<td>Human-approval rules</td>
+<td>Approval level, meeting-time approval, escalation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="58-prompt-and-harness-management">5.8 Prompt and harness management</h3>
+<p>The brief wants "a dedicated interface where an authorised user can view the campaign system prompt and per-agent prompts, edit them, save a new version, compare versions, activate a version, roll back, and see who changed what and when", and it wants the version recorded whenever an agent acts.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>What we built</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>View the campaign prompt and per-agent prompts</td>
+<td>The campaign page's Prompts and Harness panel; the Agents and Prompts screen shows each agent's role, what it reads and writes, its <strong>fixed built-in instruction</strong>, and the <strong>assembled prompt</strong> an agent would receive for a chosen campaign</td>
+</tr>
+<tr>
+<td>Edit and save a new version</td>
+<td>Editing saves a <strong>new version</strong>, never overwrites. Saving a campaign prompt requires a <strong>message</strong> ("what did you change, and why?"), like a commit message</td>
+</tr>
+<tr>
+<td>Compare versions</td>
+<td>A word-level diff between any two versions</td>
+</tr>
+<tr>
+<td>Activate and roll back</td>
+<td>Making an earlier version active restores it without deleting anything newer</td>
+</tr>
+<tr>
+<td>Who changed what and when</td>
+<td>A change log per campaign and an author and time on every version</td>
+</tr>
+<tr>
+<td>Record the version on every action</td>
+<td>Every Decision Journal entry and every hand-off note carries the harness label (for example <code>v3.2 + campaign prompt v2</code>)</td>
+</tr>
+<tr>
+<td>Answer "why did the agent do that?"</td>
+<td><strong>View prompt</strong> on any hand-off note <strong>rebuilds the exact prompt versions that agent ran with</strong>, from the label, because versions are never overwritten</td>
+</tr>
+<tr>
+<td>Answer "which configuration produced this outcome?"</td>
+<td>The analytics screen splits every agent's success rate <strong>by campaign and by prompt version</strong> (section 14)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Should prompt changes need approval? (a design question)</strong> We chose an audit trail over a gate: every change is a versioned, attributed, revertable commit with a message, and it applies only to that campaign. An approval step is on the roadmap.</p>
+<h3 id="59-levels-of-operational-control">5.9 Levels of operational control</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>What it stops</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Campaign pause</strong></td>
+<td>One campaign; the others keep running</td>
+<td>Campaign page, campaign cards</td>
+</tr>
+<tr>
+<td><strong>Agent pause</strong></td>
+<td>One agent, in one campaign or across the platform; the rest continues where appropriate</td>
+<td>Campaign page (per campaign) and Settings (platform-wide)</td>
+</tr>
+<tr>
+<td><strong>Channel pause</strong></td>
+<td>One channel across every campaign (for example email, if it starts bouncing)</td>
+<td>Settings, Channel controls</td>
+</tr>
+<tr>
+<td><strong>Global kill switch</strong></td>
+<td>All autonomous external action across the platform, at once</td>
+<td>Top bar, always visible; every campaign keeps its own status underneath, so switching it off restores exactly what was running</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What happens if a campaign is paused mid-execution? (a design question)</strong> No new step starts. A model call already in flight may finish and its result is recorded, but nothing new fires, and nothing is sent. The campaign's "last worked on" timestamp stops advancing, which our smoke test uses to prove it. <strong>How can an operator safely stop autonomous activity in a hurry?</strong> The kill switch, with a confirmation dialog that explains what it does and that data is preserved.</p>
+<h3 id="510-duplication-and-experimentation-stretch-built">5.10 Duplication and experimentation (stretch, built)</h3>
+<p>A campaign can be <strong>duplicated</strong> into a new Draft with the same targeting, knowledge, approval policy and per-campaign prompt. A manager changes one thing in the copy (a prompt, the channel mix, the qualification criteria), launches both, and compares them on the <strong>Compare</strong> screen: prospects, qualify rate, reply rate, meeting rate, positive and negative share, cost today, cost per prospect scored and per qualified lead, share of decisions made with no LLM call, and failed steps. Beyond the brief, the analytics screen also shows each agent's success rate by prompt version, so a prompt change can be judged over time on the same campaign (section 14).</p>
+<h3 id="511-representative-assignment">5.11 Representative assignment</h3>
+<table>
+<thead>
+<tr>
+<th>Brief requires</th>
+<th>Built</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Assign reps to one or more campaigns</td>
+<td>Reps are assigned per campaign, several per campaign</td>
+</tr>
+<tr>
+<td>Whose identity is used for outreach</td>
+<td>Messages are sent <strong>as</strong> the assigned rep (name on the message and on real email); the same rep is kept across a prospect's touches while they can still send</td>
+</tr>
+<tr>
+<td>Daily activity limits, working hours, channel availability</td>
+<td>Each rep has a daily limit, working hours and the channels they may use; a rep who cannot send right now does not send</td>
+</tr>
+<tr>
+<td>If a rep is offboarded, surface every affected campaign and let an admin reassign</td>
+<td>Offboarding shows the affected campaigns immediately; a campaign with no active rep is <strong>held</strong> (not silently failing) and flagged on the dashboard until an admin reassigns it</td>
+</tr>
+</tbody>
+</table>
+<h3 id="512-the-required-demonstration">5.12 The required demonstration</h3>
+<p>The final product demonstrates <strong>three concurrent campaigns, each with a different ICP, different instructions, a different audience and independent state, dashboards, execution and analytics</strong>, and shows that pausing one does not stop the others. The three demo campaigns on the live site:</p>
+<table>
+<thead>
+<tr>
+<th>Campaign</th>
+<th>Audience</th>
+<th>Channels</th>
+<th>Approval level</th>
+<th>Why it is different</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SaaS Cloud Cost Reviews: US CTOs</strong></td>
+<td>CTOs and VPs of Engineering at 50 to 500 employee US software companies</td>
+<td>Email and LinkedIn</td>
+<td>Manual</td>
+<td>The classic B2B case; every draft waits for a human</td>
+</tr>
+<tr>
+<td><strong>Campus Innovation Workshops: India</strong></td>
+<td>Faculty advisors and student club leaders at engineering colleges</td>
+<td>Email and LinkedIn</td>
+<td>Assisted</td>
+<td>A non-company audience; drafts go out on their own only after a human has approved a few</td>
+</tr>
+<tr>
+<td><strong>Tech Summit Speakers: Founders and Creators</strong></td>
+<td>Well-known founders, creators and authors (individuals and public figures)</td>
+<td>Email</td>
+<td>Manual, plus approval before proposing meeting times</td>
+<td>Individuals rather than organisations; honest about an unpaid invitation</td>
+</tr>
+</tbody>
+</table>
+<p>Each has its own offer, its own standing instructions, two knowledge sources, its own tone and its own reps. They are created by a repeatable script (<code>backend/scripts/demo-campaigns.mjs</code>). The earlier seeded campaigns (US SaaS CTO, India BFSI CIO, AI Startup Founders) demonstrate the same requirement and remain in the data.</p>
+<p><strong>Proof that pausing one does not stop the others:</strong> <code>backend/scripts/smoke.mjs</code> pauses one Live campaign against the deployed site, waits for any in-flight work to finish, and then checks two things: the paused campaign's "last worked on" time does not change, and at least one other Live campaign's does. It passes locally and is how we verify the live deployment.</p>
+<h3 id="513-the-briefs-product-design-questions-answered">5.13 The brief's product design questions, answered</h3>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Our answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How does a manager understand all campaigns at a glance?</td>
+<td>The Command Center: a card per campaign with status, ICP, prospects, outreach and meetings; a portfolio funnel; KPIs; an agent activity feed; the AI efficiency panel; and one place for the kill switch</td>
+</tr>
+<tr>
+<td>How are Live and Paused visually differentiated?</td>
+<td>Colour-coded badges (Live blue with a dot, Paused grey), the action button changes (Pause versus Resume), and the state is always in the top bar of the campaign</td>
+</tr>
+<tr>
+<td>What happens if a campaign is paused mid-execution?</td>
+<td>Section 5.9</td>
+</tr>
+<tr>
+<td>How do configuration changes propagate?</td>
+<td>An edit applies from the next agent run, and the form says so; prompt changes are versioned and apply to that campaign only</td>
+</tr>
+<tr>
+<td>Should prompt changes need approval?</td>
+<td>Section 5.8: an attributed, revertable audit trail now, an approval gate on the roadmap</td>
+</tr>
+<tr>
+<td>How are conflicting campaigns on the same prospect handled?</td>
+<td>Section 5.5: the 14-day rule, the frequency cap, the launch-time overlap warning, the journal entry</td>
+</tr>
+<tr>
+<td>How do managers compare performance across campaigns?</td>
+<td>The Compare screen and the analytics screen (section 5.10, section 14)</td>
+</tr>
+<tr>
+<td>What should a manager see before activating a campaign?</td>
+<td>The launch review (section 5.4)</td>
+</tr>
+<tr>
+<td>How can an operator safely stop autonomous activity in a hurry?</td>
+<td>The kill switch (section 5.9)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6-intelligence-layer-every-requirement-in-section-4-of-the-brief">6. Intelligence layer: every requirement in Section 4 of the brief</h2>
+<h3 id="61-the-agents">6.1 The agents</h3>
+<p>The brief lists seven agents. We built all seven, plus one more (Research) that we split out of "Lead Research and Enrichment" because discovering people and turning what is known about them into a brief are different jobs with different failure modes.</p>
+<p>The pipeline is defined <strong>once</strong>, in <code>backend/src/services/sdrSteps.js</code>. The scheduler runs that list and the campaign page's SDR Blueprint displays the same list, so what a manager reads is what actually runs.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Agent</th>
+<th>Job</th>
+<th>Reads</th>
+<th>Writes</th>
+<th>How it decides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Lead Research</strong> (discovery)</td>
+<td>Finds the people a campaign is aimed at</td>
+<td>Campaign target, knowledge</td>
+<td>New prospects, each labelled with where it came from and whether that is real</td>
+<td>Real contacts ranked by match to the audience; or the AI-imitated people search; or a free generator only when no model is configured</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Research</strong></td>
+<td>Turns what is known about a prospect into a brief</td>
+<td>The dossier, offer, knowledge</td>
+<td>Facts, reasons to reach out, gaps, a hand-off note</td>
+<td>Gemini with a strict "use only the input" rule; the rule engine restates what is known and lists what is not</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>ICP Fitment</strong></td>
+<td>Qualifies or rejects against the campaign's criteria</td>
+<td>The whole dossier, criteria, exclusion criteria</td>
+<td>Qualified or Rejected, a 0 to 100 score, evidence, a hand-off note</td>
+<td>Clear rejections by rules (no LLM call); qualifications always get the model's read; if the model is down and the rules cannot judge, the prospect waits instead of being rejected</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Outreach Strategy</strong></td>
+<td>Decides whether, when, where and how to contact</td>
+<td>The dossier, enabled channels, touch limit</td>
+<td>The prospect's plan: channels in order, wait between touches</td>
+<td>Gemini; the rule fallback orders channels by seniority. Hard constraints (enabled channels, limits) are enforced in code, not left to the model</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Personalisation</strong></td>
+<td>Drafts the first message</td>
+<td>The dossier, plan, offer, knowledge, persona</td>
+<td>A draft, always routed through the approval policy, and a hand-off note</td>
+<td>Gemini grounded in retrieved knowledge; every draft is checked (section 10)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Conversation</strong></td>
+<td>Reads a reply and decides the next action</td>
+<td>The conversation, dossier, knowledge</td>
+<td>Escalate, propose a meeting, or answer; a hand-off note</td>
+<td>Reply router first (no LLM), then Gemini; meeting replies are read by a dedicated step</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Follow-up</strong></td>
+<td>Decides when and how to follow up, or when to stop</td>
+<td>Prospect state, plan, cadence, suppression list</td>
+<td>A follow-up draft with one new fact, or closure</td>
+<td><strong>When</strong> is policy (touch limit, wait, working hours, opt-outs); <strong>how</strong> is the agent's call</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Voice SDR</strong></td>
+<td>Conducts a call, qualifies, handles objections, escalates</td>
+<td>The dossier, the call so far</td>
+<td>A transcript, an outcome, a hand-off note</td>
+<td>Turn-by-turn through the same engine chain; real campaigns only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why the ICP agent is split between rules and the model:</strong> hard numeric criteria ("50 to 500 employees") are exactly what embeddings and language models handle badly and what rules handle perfectly. A clear rejection (the score is far below the threshold and no research note carries a buying signal) is settled by rules for free. A qualification starts real outreach, so it always gets the model's read. The rule engine tells us whether it <em>can</em> judge an audience (does it have a numeric size to compare?), and if it cannot and the model is down, the prospect waits.</p>
+<p><strong>A worked example of "how do the agents collaborate":</strong></p>
+<ol>
+<li>Lead Research adds "Dr. Meera Nair, Director of a startup hub" with two entered facts.</li>
+<li>Research writes a brief: two facts, one reason to reach out, and the gaps ("not known: whether she decides on partnerships"), and a hand-off note.</li>
+<li>ICP Fitment reads the <em>whole dossier</em> (including that note), scores 84, cites the two facts, and writes its own note.</li>
+<li>Strategy reads the dossier and both notes and plans "email, then LinkedIn after three days".</li>
+<li>Personalisation reads all of it, retrieves two knowledge passages, drafts a short email that uses one real fact, and the grounding check passes.</li>
+<li>The draft lands in Approvals. A human approves. The message is sent as the assigned rep.</li>
+<li>She replies "sounds interesting, can we talk?". The reply router finds it is not a clear-cut case; the Conversation agent proposes three real times inside the rep's working hours; she picks one; the meeting is booked and an invite is produced.</li>
+</ol>
+<p>Every step wrote a Decision Journal entry and a hand-off note carrying the prompt version it ran with.</p>
+<h3 id="62-rag-and-knowledge">6.2 RAG and knowledge</h3>
+<p><strong>What the brief asks:</strong> campaign- and product-specific knowledge bases (product and company information, case studies, sales playbooks, ICP definitions, objection handling, example messages, voice scripts), and agents that <strong>retrieve before an important decision or before anything customer-facing</strong>, rather than hallucinate from the base model.</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>What we built</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Knowledge content shipped</strong></td>
+<td>Product one-pager; three customer case studies; three objection-handling guides; three sales playbooks (one per audience); 51 canonical example replies in seven categories (unsubscribe, hostile, out of office, positive, objection, question, other). ICP definitions live on the campaign. Voice scripts are the Voice SDR's instruction and rules, not separate documents</td>
+</tr>
+<tr>
+<td><strong>Per-campaign sources</strong></td>
+<td>Each campaign has its own sources. Managers add them by pasting or uploading text and can remove them. The <strong>knowledge library</strong> shows every source across campaigns, which campaigns use it, and lets a manager give a source to more campaigns</td>
+</tr>
+<tr>
+<td><strong>Chunking</strong></td>
+<td>Paragraph-sized chunks: small enough to cite one, large enough to carry meaning</td>
+</tr>
+<tr>
+<td><strong>Embeddings</strong></td>
+<td><code>BAAI/bge-small-en-v1.5</code> (384 dimensions) via <code>fastembed</code>, run <strong>in-process on the CPU</strong>. No API key, no per-call cost, cached after the first download. Vectors are cached by text so nothing is embedded twice</td>
+</tr>
+<tr>
+<td><strong>Retrieval</strong></td>
+<td>Cosine similarity between the query and the chunks, top-k (two for most decisions). If the model cannot load (small hosts), retrieval falls back to keyword TF-IDF so agents always get grounded context</td>
+</tr>
+<tr>
+<td><strong>When it happens</strong></td>
+<td>Before ICP scoring, research, strategy, drafting and replying. The retrieved source names are recorded on the decision and shown in the Decision Journal ("Retrieved knowledge")</td>
+</tr>
+<tr>
+<td><strong>Isolation</strong></td>
+<td>Retrieval only ever searches the given campaign's own sources, so one campaign can never draw on another's material</td>
+</tr>
+<tr>
+<td><strong>A retrieval tester</strong></td>
+<td>On the Knowledge screen a manager asks a question the way a prospect might and sees exactly which passages an agent would be shown</td>
+</tr>
+</tbody>
+</table>
+<p>The vector store is <strong>in-process cosine search over a few hundred chunks</strong>, not a separate vector database. For this scale it is faster, free, and one fewer moving part; Section 17 discusses when we would move to pgvector.</p>
+<h3 id="63-prompting-guardrails-and-evaluation">6.3 Prompting, guardrails and evaluation</h3>
+<p>The brief lists topics to explore. For each one, what we did:</p>
+<table>
+<thead>
+<tr>
+<th>Topic in the brief</th>
+<th>What we did</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Campaign-specific system prompts and agent harnesses</strong></td>
+<td>A versioned campaign system prompt per campaign, plus each agent's library prompt pinned per campaign, plus per-campaign overrides and a persona. The assembled prompt is inspectable</td>
+</tr>
+<tr>
+<td><strong>Structured outputs</strong></td>
+<td>Gemini's structured-output mode: the API itself returns JSON in our exact schema (a per-agent response schema, and for drafts the channel is restricted to the campaign's enabled channels in the schema <em>and</em> re-checked after parsing). Every agent also shares one output contract (agent, harness version, decision, score, evidence, retrieved knowledge, campaign instruction excerpt, conflict check, final action, hand-off note) that feeds the Decision Journal</td>
+</tr>
+<tr>
+<td><strong>Tool calling</strong></td>
+<td>Not used. Retrieval and channel actions are performed by the orchestrator around the model call, which keeps every action gated and auditable. Tool calling and MCP are on the roadmap</td>
+</tr>
+<tr>
+<td><strong>Guardrails and hallucination prevention</strong></td>
+<td>Fixed system prompts ("use only facts in the input, never invent numbers, customers or claims, no prices, no security or compliance commitments, no specific meeting times unless supplied"); a <strong>grounding check</strong> on every draft (section 10); escalation for anything the agents cannot safely answer; hard limits in code</td>
+</tr>
+<tr>
+<td><strong>Human-in-the-loop escalation</strong></td>
+<td>Pricing, security, compliance and legal questions, hostile replies, and anything ungroundable always create an approval for a human, at every approval level</td>
+</tr>
+<tr>
+<td><strong>Prompt and version management</strong></td>
+<td>Section 5.8</td>
+</tr>
+<tr>
+<td><strong>Golden datasets and AI evaluation</strong></td>
+<td><code>backend/eval/icp-golden.json</code>: <strong>19 hand-labelled prospects</strong> across the three seeded campaigns (16 scored, 3 borderline that are reported but not scored), covering strong fits, wrong role, wrong size, wrong industry, wrong region, and a competitor named only in the research notes. On our last run the rule engine agreed 12 of 16 (75%) and Gemini 16 of 16. The rule engine's misses are exactly the cases that need judgment, which is why qualifications go to the model. We call 16 of 16 "no regressions on known cases", not a measured accuracy, because the set is small and we labelled it. A regression test guards the rule engine's score on it. <strong>The Dev tab's real-data tests</strong> let a manager enter their own labelled people and see how often a campaign's ICP agent agrees</td>
+</tr>
+<tr>
+<td><strong>LLM-as-judge or human evaluation</strong></td>
+<td><strong>Human evaluation is built</strong>: in the judge sandbox a real person plays the prospect, and a scorecard plus a 1 to 5 rating and notes record the result. LLM-as-judge is on the roadmap</td>
+</tr>
+<tr>
+<td><strong>Model selection and routing</strong></td>
+<td>An <strong>engine chain</strong> (DronaHQ, then Gemini, then the rule engine, always last); a <strong>model list</strong> inside Gemini tried in order (a small fast model first; free-tier quota is per model, so a second model keeps the demo alive); the rule engine and reply router for what does not need a model</td>
+</tr>
+<tr>
+<td><strong>Fine-tuning</strong></td>
+<td>Deliberately not done: at this scale retrieval and prompts already give the behaviour, and there was no data to justify it</td>
+</tr>
+</tbody>
+</table>
+<h3 id="64-cost-and-performance">6.4 Cost and performance</h3>
+<p><strong>What the brief asks:</strong> design for production-scale usage: token consumption, model cost, latency, context optimisation, RAG optimisation, caching, smaller models for simpler tasks, and cost per prospect, per qualified lead and per conversation.</p>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>What we built</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Token consumption</strong></td>
+<td>Every Gemini call records tokens in and out, per agent and per campaign</td>
+</tr>
+<tr>
+<td><strong>Model cost</strong></td>
+<td>A configurable price per million tokens turns tokens into an estimated cost; when the provider reports no tokens, a flat per-call estimate is used</td>
+</tr>
+<tr>
+<td><strong>Latency</strong></td>
+<td>Average latency per agent, from the calls behind each decision</td>
+</tr>
+<tr>
+<td><strong>Cost per prospect, per qualified lead, per conversation</strong></td>
+<td>Computed and shown on the Command Center's <strong>AI Efficiency</strong> panel and per campaign on the Compare screen</td>
+</tr>
+<tr>
+<td><strong>Smaller models for simpler tasks</strong></td>
+<td>The fast lite model first; rules and embeddings for whatever does not need a model at all</td>
+</tr>
+<tr>
+<td><strong>Context optimisation</strong></td>
+<td>Top-k retrieval instead of whole documents; the dossier is bounded (a maximum number of facts and notes, each note clipped); the prompt carries only what the step needs</td>
+</tr>
+<tr>
+<td><strong>RAG optimisation</strong></td>
+<td>Local embeddings (free), cached vectors, per-campaign scoping so a search covers only what is relevant</td>
+</tr>
+<tr>
+<td><strong>Caching</strong></td>
+<td>Embedding vectors are cached. A decision cache is on the roadmap</td>
+</tr>
+<tr>
+<td><strong>Decisions with no LLM call</strong></td>
+<td>Clear-cut ICP rejections (the shortcut), reply routing by embeddings, and the cap fallback. The panel shows how many decisions needed no model at all</td>
+</tr>
+<tr>
+<td><strong>A hard budget</strong></td>
+<td>Every provider request is counted (retries included). Past <code>LLM_DAILY_CALL_CAP</code> the rule engine decides, so the free quota cannot be exhausted mid-demo. A client-side rate limit keeps requests under the provider's per-minute quota</td>
+</tr>
+</tbody>
+</table>
+<h3 id="65-the-suggested-tools-and-what-we-used">6.5 The suggested tools, and what we used</h3>
+<p>The brief says the goal is not to use every tool but a "modular, cost-efficient, measurable AI system". This is our position on each row.</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Suggested</th>
+<th>What we did</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GTM platform</strong></td>
+<td>DronaHQ Agentic AI and Vibe Coding</td>
+<td>Used for the control-plane UI's origin and for designing, instructing, equipping and testing the agents (section 7)</td>
+</tr>
+<tr>
+<td><strong>Lead discovery and enrichment</strong></td>
+<td>Apollo or equivalent</td>
+<td>Not connected. We built two substitutes: hand-entered <strong>real contacts</strong> (used for real sending) and an <strong>LLM acting as a people-search tool</strong> (used for simulated campaigns). The rest of the system only sees a candidate shape, so a real provider is an adapter, not a rewrite</td>
+</tr>
+<tr>
+<td><strong>LinkedIn</strong></td>
+<td>Browser automation or a third-party service</td>
+<td>Simulated: the channel is planned, approved and recorded, but nothing is sent. LinkedIn has no sanctioned sending API, and we chose not to automate a browser against its terms</td>
+</tr>
+<tr>
+<td><strong>Email</strong></td>
+<td>Gmail or the Gmail API</td>
+<td><strong>Gmail API, real</strong>: OAuth refresh-token authentication, threaded sends, inbox reading, bounce and auto-reply detection, calendar invites as attachments</td>
+</tr>
+<tr>
+<td><strong>SMS and telephony</strong></td>
+<td>Twilio</td>
+<td>Built (SMS send, signed reply webhook) and <strong>tested against a fake Twilio server</strong>; not run against live Twilio</td>
+</tr>
+<tr>
+<td><strong>Voice AI</strong></td>
+<td>Twilio plus a voice AI platform, or a custom stack</td>
+<td>A <strong>custom stack</strong>: Twilio does speech-to-text and text-to-speech and places the call; our Voice SDR decides each turn through the engine chain. Tested against fakes; not run live</td>
+</tr>
+<tr>
+<td><strong>Knowledge and RAG</strong></td>
+<td>pgvector, Pinecone, Qdrant or equivalent</td>
+<td>An equivalent: in-process cosine search over local embeddings. The matching prototype used Neon with pgvector</td>
+</tr>
+<tr>
+<td><strong>Agent tools</strong></td>
+<td>MCP and tool calling</td>
+<td>Not used (section 6.3)</td>
+</tr>
+<tr>
+<td><strong>Multi-agent communication</strong></td>
+<td>A2A or an orchestration framework</td>
+<td>A custom orchestrator (the scheduler) plus a <strong>shared dossier</strong>: agents communicate through a durable, inspectable record, not through message passing</td>
+</tr>
+<tr>
+<td><strong>CRM</strong></td>
+<td>Salesforce, HubSpot, Google Sheets</td>
+<td>Not built; the Decision Journal and prospect records are the system of record</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="7-how-dronahq-is-used">7. How DronaHQ is used</h2>
+<p>The brief requires that DronaHQ is used "meaningfully in your core solution", and warns that it should not be "a wrapper dashboard bolted onto a system built entirely elsewhere", while also saying judges expect real, engineer-authored code underneath. Our position is the one the brief describes: <strong>DronaHQ is a genuine part of the system, and the system is not only DronaHQ.</strong> This section says exactly where DronaHQ sits, what we did on it, what worked, and the platform limit we hit, so a judge can check every sentence.</p>
+<h3 id="71-dronahq-at-a-glance">7.1 DronaHQ at a glance</h3>
+<table>
+<thead>
+<tr>
+<th>DronaHQ capability</th>
+<th>What we did with it</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Studio (control-plane UI)</strong></td>
+<td>The control plane began as a DronaHQ Studio application (React and Vite export, eight screens on a mock service), then was extended by us into the current 14-screen application wired to the real backend</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: agent definition</strong></td>
+<td>Built the <strong>ICP Fitment agent</strong> by hand on agents.dronahq.com: a role-and-rules instruction, an explicit scoring rubric, an output contract, and the exclusion rule that overrides any score</td>
+<td>Used, tested</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: variables</strong></td>
+<td>Configured campaign-level variables <code>{{GUARDRAILS}}</code> and <code>{{ESCALATION_RULES}}</code> so the same guardrail text is injected into every agent instead of being retyped per agent, and <code>{{body}}</code> for the webhook payload</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: knowledge base</strong></td>
+<td>Attached a knowledge base to the ICP agent; retrieved passages are cited in the agent's evidence</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: structured output</strong></td>
+<td>Defined a structured output (<code>result</code>, an object of ten string properties matching our shared output contract) and linked it to the agent</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: versioning</strong></td>
+<td>Published the agent as versions up to <strong>v1.0.3</strong>, with rollback through the platform's versioning menu</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: Playground</strong></td>
+<td>Ran the agent in the Playground with real payloads, including the test that shows the agent <strong>reads the dossier before judging</strong> (below)</td>
+<td>Used, tested</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: Artisan</strong></td>
+<td>Created five further agents (Lead Research, Outreach Strategy, Personalisation, Conversation, Follow-up) through Artisan by giving it the full instruction text, with variables set</td>
+<td>Created; not individually verified in the Playground the way ICP Fitment was</td>
+</tr>
+<tr>
+<td><strong>Agentic AI: webhook trigger</strong></td>
+<td>Added a webhook trigger with API-key authentication and built a backend adapter that calls it</td>
+<td>Called successfully; the platform's reply carried no agent output (section 7.4)</td>
+</tr>
+<tr>
+<td><strong>Traces</strong></td>
+<td>Used to debug every run: the run's input, the two LLM calls behind it, and the credit cost (about 14 to 21 credits per run; the "Standard" response mode doubles the LLM calls)</td>
+<td>Used</td>
+</tr>
+<tr>
+<td><strong>Vibe Coding</strong></td>
+<td>Not used</td>
+<td>Not used</td>
+</tr>
+</tbody>
+</table>
+<h3 id="72-what-we-designed-on-dronahq-and-why-it-matters">7.2 What we designed on DronaHQ, and why it matters</h3>
+<p><strong>A shared output contract.</strong> Every DronaHQ agent, and every one of our own engines, returns the same JSON shape: agent name, harness version, decision, fit score, evidence, retrieved knowledge, the campaign instruction excerpt, the conflict check, the final action and a hand-off note. That single contract is what feeds the Decision Journal and the Prospect Detail screen, and it is why swapping the engine behind an agent never changes anything the manager sees. We designed it on the DronaHQ agent and then built the whole application to speak it.</p>
+<p><strong>Guardrails as variables, not copy-paste.</strong> All agents obey the same <code>{{GUARDRAILS}}</code> and <code>{{ESCALATION_RULES}}</code>, injected at campaign level. A change to a guardrail is one edit that reaches every agent. Our own prompt composition mirrors this: a campaign prompt and persona are placed in front of each agent's library prompt at run time.</p>
+<p><strong>Proof that the agent reads the dossier.</strong> In the Playground we ran the ICP Fitment agent twice on the same prospect: once with an empty dossier, once with a dossier entry written by the Lead Research agent. The fit score moved from <strong>78 to 91</strong>, and the evidence and retrieved knowledge visibly changed to lean on the dossier entry rather than the raw fields. That is the behaviour the brief calls "agents understand the prospect before acting", verified on the platform rather than assumed.</p>
+<p><strong>A bug found by testing, not by reading.</strong> Our early notes wrote variables as <code>//VARIABLE//</code>; DronaHQ's syntax is <code>{{VARIABLE}}</code>. DronaHQ silently left the literal text in the prompt instead of substituting values. We found it by inspecting a run, fixed the ICP agent, and audited the others for the same mistake.</p>
+<p><strong>The agent model is our vocabulary.</strong> Each part of our agent layer corresponds to a DronaHQ concept, which is why the two fit together:</p>
+<table>
+<thead>
+<tr>
+<th>DronaHQ concept</th>
+<th>Our equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent Instructions</td>
+<td>A versioned agent prompt in the library, pinned per campaign</td>
+</tr>
+<tr>
+<td>Variables</td>
+<td>Campaign-level prompt, persona, guardrails and escalation rules injected at run time</td>
+</tr>
+<tr>
+<td>Knowledge Base</td>
+<td>Per-campaign RAG, retrieved before every important decision</td>
+</tr>
+<tr>
+<td>Structured Output</td>
+<td>The shared output contract and Gemini's response schemas</td>
+</tr>
+<tr>
+<td>Versions and rollback</td>
+<td>Prompt versions with messages, diff, compare and roll back</td>
+</tr>
+<tr>
+<td>Trigger (webhook)</td>
+<td>The engine adapter (<code>dronahqEngine.js</code>)</td>
+</tr>
+<tr>
+<td>Traces</td>
+<td>The Decision Journal, with the prompt version and retrieved sources on every entry</td>
+</tr>
+</tbody>
+</table>
+<h3 id="73-the-engineering-around-dronahq">7.3 The engineering around DronaHQ</h3>
+<p>DronaHQ is required, not sufficient, so the code around it is ours:</p>
+<ul>
+<li><strong><code>dronahqEngine.js</code></strong> is a complete adapter: it builds the payload from the prospect, campaign and dossier; calls each agent's webhook with the API-key header; parses whatever comes back (JSON in a fenced block, a bare object, or a prose answer, all detected and handled); validates and normalises the result (for example a drafted channel must be one the campaign has enabled); and enforces a timeout.</li>
+<li><strong>A fallback policy</strong> that is explicit rather than hidden: by default a failed DronaHQ call falls through to the next engine for that one decision; in strict mode it throws so nothing masks a failure while integrating.</li>
+<li><strong>The engine chain</strong> (<code>AGENT_ENGINE=dronahq,gemini</code> or <code>dronahq</code>) makes DronaHQ a first-class engine beside Gemini and the rule engine.</li>
+<li><strong>Tests:</strong> the adapter is covered by unit tests against a fake webhook server, including a test built from the <strong>exact body the live agent returned when it answered in prose</strong>.</li>
+<li><strong>Scripts:</strong> <code>backend/scripts/try-icp.mjs</code> and <code>dronahq-probe.mjs</code> call a real agent for diagnosis.</li>
+</ul>
+<h3 id="74-what-we-found-the-webhook-returns-no-output">7.4 What we found: the webhook returns no output</h3>
+<p>We integrated DronaHQ agents into the decision path and then investigated a platform behaviour in depth, so it is worth reporting in full.</p>
+<p><strong>Symptom.</strong> POSTing a prospect to an agent's webhook trigger runs the agent and reports success, but the reply's <code>response</code> field is always <code>null</code> (with "Response: Standard"), or "started in background" with no output (with "Response: None"). The very same agent and payload run in the Playground <strong>do</strong> show the JSON output. In Traces, the run's LLM calls both contain our correct JSON, but the run's Overview says "No output data available".</p>
+<p><strong>What we tried, in order:</strong></p>
+<ol>
+<li>Response set to Standard with each of five response schemas (a loose one, the original accepted one, the loosest, a trivial single-field test, and one wrapping the result in an object) and DronaHQ's own "Text Response" template.</li>
+<li>Response set to None.</li>
+<li>Defining a <strong>Structured Output</strong> on the agent, linking it, and republishing (v1.0.3).</li>
+<li>Re-calling with <code>thread_id</code>, which starts a <em>new</em> run in the same conversation rather than fetching the old result, so it is for multi-turn chat, not for retrieving a run.</li>
+<li>Searching the documentation, which says nothing about sync versus async, timeouts or how output maps to the Standard response.</li>
+</ol>
+<p><strong>What we did about it.</strong> We posted the question to DronaHQ (how does a webhook caller receive an agent's output?) and had no answer by submission time. Because the brief warns that "a smaller feature set that works end to end beats a larger one that only works in the demo path", we did not let this block the build:</p>
+<ul>
+<li>The engine chain puts <strong>Gemini</strong> in the decision path today, with the deterministic rule engine always last, so the loop is complete and reliable.</li>
+<li>The DronaHQ engine is <strong>fully built, tested and selectable</strong>. If the platform returns the output (or if the agent is given a REST tool that posts its result back to us, our documented alternative), one environment variable puts DronaHQ agents into the decision path with <strong>no code change</strong>, because every engine speaks the same contract.</li>
+</ul>
+<p><strong>What we would say to a judge:</strong> DronaHQ shaped our agent design and contract, hosted the agents we built and tested, and originated the control-plane UI; the runtime output path from a webhook is the one thing we could not get working on the platform in 51 hours, and we designed the system so that it does not depend on it.</p>
+<h3 id="75-why-this-is-not-a-wrapper">7.5 Why this is not a wrapper</h3>
+<table>
+<thead>
+<tr>
+<th>Concern in the brief</th>
+<th>Our answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"Not a wrapper dashboard bolted onto a system built elsewhere"</td>
+<td>DronaHQ is at the <em>judgment seam</em> (the agents) and the origin of the UI; the orchestration, data model, limits, approvals, retrieval, channels and measurement are all our own code</td>
+</tr>
+<tr>
+<td>"Real, engineer-authored code underneath"</td>
+<td>About 7,300 lines of backend and 6,000 lines of frontend, 187 tests, written and committed by the team</td>
+</tr>
+<tr>
+<td>"Custom services, integrations, data models and orchestration logic that you designed"</td>
+<td>The scheduler and its gates, the dossier, the matching layer, the engine chain, the Gmail and Twilio integrations, the analytics, the migrations</td>
+</tr>
+<tr>
+<td>"DronaHQ as a genuine part of the system rather than the whole of it"</td>
+<td>Exactly that: one of three engines in a chain, with a deliberate fallback</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-beyond-the-brief-the-extras-we-built">8. Beyond the brief: the extras we built</h2>
+<p>The problem statement lists what to build. This section lists what we built <strong>in addition</strong>, because each one either closes a gap a real sales team would hit on day one, or makes a claim in this report verifiable. Each extra says what it is, why we built it, how it works, and where a judge can see it. The rubric's "Innovation / Extra Thinking" category and its cost, measurement, reliability and end-to-end categories are all served by this list.</p>
+<p><strong>The extras at a glance</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Extra</th>
+<th>Group</th>
+<th>Rubric categories it helps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E1</td>
+<td>Matching versus judgment, with free local embeddings</td>
+<td>Cost and intelligence</td>
+<td>Multi-channel intelligence, Measurement, Innovation</td>
+</tr>
+<tr>
+<td>E2</td>
+<td>Decisions with no LLM call: the ICP shortcut and the embedding reply router</td>
+<td>Cost and intelligence</td>
+<td>Measurement, Engineering</td>
+</tr>
+<tr>
+<td>E3</td>
+<td>Cost governance: a hard daily cap, rate limits, model fallback, per-campaign usage</td>
+<td>Cost and intelligence</td>
+<td>Measurement, Engineering</td>
+</tr>
+<tr>
+<td>E4</td>
+<td>A grounding check that blocks unsupported claims from going out</td>
+<td>Cost and intelligence</td>
+<td>Context and personalisation</td>
+</tr>
+<tr>
+<td>E5</td>
+<td>The Prospect Dossier, hand-off notes and the SDR Blueprint</td>
+<td>Cost and intelligence</td>
+<td>Multi-channel intelligence, Context</td>
+</tr>
+<tr>
+<td>E6</td>
+<td>A Research agent that only restates what is known</td>
+<td>Cost and intelligence</td>
+<td>Context and personalisation</td>
+</tr>
+<tr>
+<td>E7</td>
+<td><strong>The LLM as a people-search tool</strong> (clever simulated data for any audience)</td>
+<td>Realistic data</td>
+<td>Innovation, End-to-end</td>
+</tr>
+<tr>
+<td>E8</td>
+<td>Individuals and public figures as an audience, not just people at companies</td>
+<td>Realistic data</td>
+<td>Innovation</td>
+</tr>
+<tr>
+<td>E9</td>
+<td>One-person campaigns</td>
+<td>Realistic data</td>
+<td>End-to-end</td>
+</tr>
+<tr>
+<td>E10</td>
+<td>A real-versus-simulated switch per campaign, and real contacts</td>
+<td>Realistic data</td>
+<td>Innovation, End-to-end</td>
+</tr>
+<tr>
+<td>E11</td>
+<td><strong>The judge sandbox</strong>: a real person plays the prospect</td>
+<td>Testing with humans</td>
+<td>Innovation, End-to-end, Measurement</td>
+</tr>
+<tr>
+<td>E12</td>
+<td>Search playground, real-data tests, a runtime view and "Ask Gemini"</td>
+<td>Testing with humans</td>
+<td>Engineering, Measurement</td>
+</tr>
+<tr>
+<td>E13</td>
+<td>Meeting scheduling that books real times and sends an invite</td>
+<td>End-to-end</td>
+<td>End-to-end</td>
+</tr>
+<tr>
+<td>E14</td>
+<td>Approval levels, including meeting-time approval</td>
+<td>Human control</td>
+<td>Product, Engineering</td>
+</tr>
+<tr>
+<td>E15</td>
+<td><strong>Real email through the Gmail API</strong></td>
+<td>Real channels</td>
+<td>Multi-channel, End-to-end</td>
+</tr>
+<tr>
+<td>E16</td>
+<td>Real SMS through Twilio, with signed webhooks</td>
+<td>Real channels</td>
+<td>Multi-channel</td>
+</tr>
+<tr>
+<td>E17</td>
+<td><strong>A Voice SDR</strong> that holds a real call turn by turn</td>
+<td>Real channels</td>
+<td>Multi-channel</td>
+</tr>
+<tr>
+<td>E18</td>
+<td>Safety for real sending</td>
+<td>Real channels</td>
+<td>Engineering</td>
+</tr>
+<tr>
+<td>E19</td>
+<td>Professional emails, not templates</td>
+<td>Real channels</td>
+<td>Context and personalisation</td>
+</tr>
+<tr>
+<td>E20</td>
+<td>Prompt management like Git, and a prompt inspector</td>
+<td>Manager tooling</td>
+<td>Measurement, Product</td>
+</tr>
+<tr>
+<td>E21</td>
+<td>Analytics: every agent's success rate by prompt version, and campaign health</td>
+<td>Manager tooling</td>
+<td>Measurement, Innovation</td>
+</tr>
+<tr>
+<td>E22</td>
+<td>A knowledge library with a retrieval tester, and a full Agents and Prompts screen</td>
+<td>Manager tooling</td>
+<td>Product</td>
+</tr>
+<tr>
+<td>E23</td>
+<td>A simulated clock with real hard limits, and representative controls</td>
+<td>Manager tooling</td>
+<td>Engineering, Product</td>
+</tr>
+<tr>
+<td>E24</td>
+<td>A designed interface: type scale, one colour per status, no blank screens</td>
+<td>Manager tooling</td>
+<td>Product</td>
+</tr>
+<tr>
+<td>E25</td>
+<td>Honest failure handling: hold, do not reject; say why</td>
+<td>Reliability</td>
+<td>Engineering</td>
+</tr>
+<tr>
+<td>E26</td>
+<td>Operations: migrations, backups, sign-in, one-service deploy, smoke test, demo script</td>
+<td>Reliability</td>
+<td>Engineering</td>
+</tr>
+<tr>
+<td>E27</td>
+<td>187 tests, fake servers for every provider, and the bugs that using it found</td>
+<td>Reliability</td>
+<td>Engineering</td>
+</tr>
+<tr>
+<td>E28</td>
+<td>Documentation that a new engineer can follow</td>
+<td>Reliability</td>
+<td>Engineering</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="group-1-cost-and-intelligence">Group 1: Cost and intelligence</h3>
+<h4 id="e1-matching-versus-judgment-with-free-local-embeddings">E1. Matching versus judgment, with free local embeddings</h4>
+<p><strong>What.</strong> Every decision in the pipeline is classified as <em>matching</em> or <em>judgment</em>, and only judgments spend model calls.</p>
+<p><strong>Why.</strong> The brief asks for cost efficiency ("smaller models for simpler tasks", "cost per qualified lead") and for reliability. A cosine check settles "does this reply look like an unsubscribe?" as well as a model does, at zero cost and in milliseconds; and a hard rule such as "50 to 500 employees" cannot survive being turned into an embedding at all. Deciding <em>up front</em> which kind each decision is gave us the cost story and the correctness story from one idea.</p>
+<p><strong>How.</strong> The matching prototype (three endpoints: rank companies against an ICP, pick the best contact, classify a reply) was built and tested first. Its embeddings were first planned on OpenAI; with no budget for API billing we moved them to <strong><code>fastembed</code> with <code>BAAI/bge-small-en-v1.5</code></strong> (384 dimensions), which runs in-process on the CPU with no key and no billing and works offline after a one-time model download. The same embeddings now power knowledge retrieval and reply routing inside the Node backend.</p>
+<p><strong>See it.</strong> <code>backend/src/services/embeddings.js</code>, <code>rag.js</code>, <code>replyRouter.js</code>; the matching prototype in <code>matching-service/</code> with its 13 tests.</p>
+<h4 id="e2-decisions-with-no-llm-call">E2. Decisions with no LLM call</h4>
+<p><strong>What.</strong> Two places where a model is deliberately not asked.</p>
+<ol>
+<li><strong>The ICP shortcut.</strong> When the rule engine's score is far below the threshold, or a hard exclusion fired, and the research notes hold no buying signal ("hiring", "raised", "announced"), the prospect is rejected by rules, with no model call. Qualifications always go to the model, because a qualification starts real outreach.</li>
+<li><strong>The reply router.</strong> A reply is compared with canonical examples (51 of them in seven categories). If it is clearly an unsubscribe, hostile, or an out-of-office auto-reply, with high similarity <em>and</em> a clear margin over the nearest category that needs judgment, it is routed <strong>deterministically</strong>: opt-outs go on the global suppression list, out-of-office pauses follow-ups, and the Conversation agent is never called. Ambiguous replies (an objection, a question, interest) always reach the agent.</li>
+</ol>
+<p><strong>Why.</strong> These are the highest-volume, lowest-value decisions in an SDR system. Sending them to a model wastes money and adds a failure point in the place a mistake costs most (an ignored opt-out).</p>
+<p><strong>Measured.</strong> The AI Efficiency panel counts "decisions made with no LLM call" and their estimated saving, per day and per campaign.</p>
+<h4 id="e3-cost-governance">E3. Cost governance</h4>
+<p><strong>What.</strong> A set of controls so that the free quota cannot be exhausted and cost is visible.</p>
+<ul>
+<li>A <strong>hard daily cap</strong> on model calls (<code>LLM_DAILY_CALL_CAP</code>); every provider request counts, retries included; past the cap the rule engine decides. The counters are persisted, so a restart mid-demo does not reset the cap.</li>
+<li>A <strong>client-side rate limit</strong> (requests per minute) that stays under the provider's per-minute quota.</li>
+<li><strong>Retries with growing pauses</strong> for temporary errors (rate limits, "high demand"), honouring the provider's <code>Retry-After</code>.</li>
+<li>A <strong>model list</strong>: the fast small model first, and a second model tried when the first's quota is used up, because free-tier quota is per model.</li>
+<li><strong>Usage by campaign and by agent</strong>: calls, tokens in and out, latency, estimated cost, and decisions settled with no model. These are shown on the dashboard and on the Compare screen.</li>
+</ul>
+<p><strong>Why.</strong> A demo that dies at the first quota error, or a system that silently spends, would fail the brief's reliability and cost expectations.</p>
+<h4 id="e4-a-grounding-check-on-every-customer-facing-draft">E4. A grounding check on every customer-facing draft</h4>
+<p><strong>What.</strong> After a model writes a draft, a deterministic checker (no LLM) compares it with what the agent was actually given: the retrieved knowledge, the prospect's own data and the campaign's offer. It fails a draft that contains:</p>
+<ul>
+<li>a <strong>figure</strong> (a percentage, a price, "60 days") that appears in none of those sources;</li>
+<li>a <strong>compliance or certification claim</strong> (SOC 2, ISO 27001, HIPAA, GDPR, "RBI compliant", "certified", "guaranteed") that the knowledge does not make;</li>
+<li>a <strong>price</strong> at all (pricing always goes through a human);</li>
+<li>a <strong>specific meeting time</strong> in a message that is not confirming a meeting.</li>
+</ul>
+<p><strong>Then.</strong> The agent gets <strong>one rewrite</strong> with the problems named, and the better of the two drafts is kept. A draft that still fails <strong>cannot be auto-sent at any approval level</strong>: it lands in the Approvals queue with a red "Grounding check failed" banner listing the issues, so a human edits or rejects it.</p>
+<p><strong>Why.</strong> The brief's "hallucination prevention" is usually a prompt instruction. A prompt instruction is a request; this is a check that it held. It targets exactly the kinds of claim that do damage when made up.</p>
+<h4 id="e5-the-prospect-dossier-hand-off-notes-and-the-sdr-blueprint">E5. The Prospect Dossier, hand-off notes and the SDR Blueprint</h4>
+<p><strong>What.</strong> One record per prospect, read by every agent before it acts:</p>
+<ul>
+<li><strong>Facts</strong>, each with its source ("entered by a person", "research", "imitated search");</li>
+<li><strong>Reasons to reach out</strong> ("hooks") and <strong>gaps</strong> (what is <em>not</em> known);</li>
+<li><strong>A hand-off note from each agent</strong>: one or two plain sentences, with the agent, the prompt version and the engine that produced it.</li>
+</ul>
+<p>Every agent receives the whole dossier, so the ICP agent sees what Research found, Strategy sees both, and Personalisation sees all three. The campaign page's <strong>SDR Blueprint</strong> shows the whole SDR as one entity: its mission (objective, offer, brief, persona), the steps in order with what each reads and writes, and the shared rules.</p>
+<p><strong>Why.</strong> The brief's central warning is "it should feel like one SDR working across channels, not five disconnected bots". The dossier is the mechanism that makes that true rather than claimed.</p>
+<h4 id="e6-a-research-agent-that-only-restates-what-is-known">E6. A Research agent that only restates what is known</h4>
+<p><strong>What.</strong> A dedicated agent that turns the known facts into a brief: facts, reasons to reach out, gaps. Its rule is strict: it <strong>uses only the input and never invents</strong>. After it runs, every fact it produced is passed through the grounding check and a fact with figures or claims not in the prospect's own data is <strong>dropped, not stored</strong>.</p>
+<p><strong>Why.</strong> Research is where hallucination quietly enters a pipeline, because everything downstream trusts it. We treat it as the place to be most conservative.</p>
+<hr />
+<h3 id="group-2-realistic-data">Group 2: Realistic data</h3>
+<h4 id="e7-the-llm-as-a-people-search-tool-clever-simulated-data-for-any-audience">E7. The LLM as a people-search tool (clever simulated data for any audience)</h4>
+<p><strong>What.</strong> There is no budget for Apollo and no way to fetch real people at hackathon scale, so we made the model <em>imitate</em> a lead-search tool. Given a campaign's ICP, personas, geography, company and exclusion criteria, plus the names already returned, it returns candidate people: a name, a title, an organisation, a size, a location, two to four plausible facts and free-form attributes.</p>
+<ul>
+<li>It works for <strong>any audience</strong>, not only companies: student club leaders come back with a college, a year and a club; doctors come back with a clinic.</li>
+<li>It returns <strong>near misses on purpose</strong> (a different seniority, size or region), as a real search would, so the ICP agent has something to reject.</li>
+<li>Results are <strong>fictional and labelled</strong>: every prospect records <code>source: imitated search (AI, fictional people)</code> and <code>real: false</code>, and every email ends in the reserved <code>.example</code> domain so it can never belong to a real person.</li>
+<li>The output is schema-constrained and normalised (duplicates and already-found names dropped, addresses forced onto <code>.example</code>).</li>
+</ul>
+<p><strong>Why.</strong> It gave us realistic, campaign-specific, varied data for three different audiences with zero integration cost, and it is a drop-in: the rest of the system sees only a candidate shape, so Apollo would be an adapter, not a rewrite. It is also what makes the required three-campaign demonstration believable.</p>
+<p><strong>Safeguards.</strong> If the model is down, the search <strong>adds nobody and reports why</strong>, rather than filling a campaign with people from name lists that the rules would then reject (E25). The free name-list generator is used only when no model is configured at all.</p>
+<h4 id="e8-individuals-and-public-figures-as-an-audience">E8. Individuals and public figures as an audience</h4>
+<p><strong>What.</strong> A campaign chooses whether it targets <em>people at organisations</em> or <em>individuals, including famous people and public figures</em>. For individuals no organisation is needed, and the search prompt is different: it may name well-known public figures, using only widely known public facts, and is told never to invent private details or contact details, and never to return a private individual.</p>
+<p><strong>Why.</strong> Real outreach is not always to employees of companies: speakers, creators, authors, candidates for a panel. The third demo campaign, <strong>Tech Summit Speakers</strong>, uses this.</p>
+<p><strong>Honesty.</strong> A famous person in a <em>simulated</em> campaign is the model's recollection and is unverified; every email is still a made-up <code>.example</code> address. A famous person in a <em>real</em> campaign is someone a human typed in, with the address they actually have.</p>
+<h4 id="e9-one-person-campaigns">E9. One-person campaigns</h4>
+<p><strong>What.</strong> A campaign can be aimed at <em>one specific person</em>. The person is entered by hand (name, role, organisation, email and phone if real, and a few facts), becomes the campaign's only prospect, and the ICP step qualifies them by policy because there is nothing to score. The SDR researches them, plans, writes, and works only on them until they reply or a meeting is booked.</p>
+<p><strong>Why.</strong> It is the smallest possible SDR task, which makes it the best unit for testing, for demonstrating, and for a manager who wants to work one important account.</p>
+<h4 id="e10-a-real-versus-simulated-switch-per-campaign-and-real-contacts">E10. A real-versus-simulated switch per campaign, and real contacts</h4>
+<p><strong>What.</strong> Every campaign chooses <strong>Simulated (AI)</strong> or <strong>Real</strong>. Simulated campaigns use made-up people and simulated replies and can never send anything. Real campaigns use only <strong>real contacts</strong>: people a human entered in the Dev tab with real emails and phone numbers, ranked against the audience. Only a real campaign can email, text or call, and it does so under the safeguards in E18.</p>
+<p><strong>Why.</strong> A system that only ever simulates cannot prove it works; a system that can send for real by accident is dangerous. Making the choice explicit, per campaign, with one function (<code>isRealCampaign</code>) deciding everything downstream, gives both.</p>
+<hr />
+<h3 id="group-3-testing-with-humans">Group 3: Testing with humans</h3>
+<h4 id="e11-the-judge-sandbox">E11. The judge sandbox</h4>
+<p><strong>What.</strong> In <strong>Dev, Judge sandbox</strong> a person enters a real person's details (or their own), what the SDR should achieve and what is being offered, and presses <strong>Run the SDR</strong>. The SDR researches, plans and writes the first message. Then <strong>the judge plays the prospect</strong>: they read what the SDR sent and type real replies in their own words. They can ask a question, ask for another time, or say no. The SDR proposes real meeting times inside the rep's working hours, reads the judge's answer, books one, and produces a downloadable calendar invite.</p>
+<p>A <strong>scorecard</strong> built from what actually happened (no model asked) reports:</p>
+<ul>
+<li>whether the SDR wrote to the person;</li>
+<li>whether a meeting was booked, and inside the rep's working hours;</li>
+<li>whether it clashes with another meeting;</li>
+<li>whether any draft with an unsupported claim was sent;</li>
+<li>whether it needed a human to step in;</li>
+<li>turns from each side, LLM decisions versus decisions with none, and estimated cost.</li>
+</ul>
+<p>The judge also gives a 1 to 5 rating and notes.</p>
+<p><strong>Why.</strong> The brief's judging question is "how close is this to a real SDR?". A judge who can <em>talk to it</em> and watch it book a meeting answers that in two minutes. It is also our <strong>human evaluation</strong>, and it worked as a bug-finder: running it against a live server showed that the rep's simulated working hours were holding the first message, which the unit tests had not caught (sandboxes now ignore the simulated clock).</p>
+<p><strong>Isolation.</strong> Sandbox runs never appear in the dashboard, approvals, journal or comparisons, and a sandbox <strong>never sends anything for real</strong>, even with real details typed in.</p>
+<h4 id="e12-search-playground-real-data-tests-runtime-view-and-ask-gemini">E12. Search playground, real-data tests, runtime view and "Ask Gemini"</h4>
+<p><strong>What.</strong> Four more tools on the Dev tab.</p>
+<ul>
+<li><strong>Search playground:</strong> try the imitated search on any audience and judge how believable the people are. Nothing is saved.</li>
+<li><strong>Real-data tests:</strong> enter real people with the answer you expect ("should this person qualify?"), pick a campaign, and see how often its ICP agent agrees, with its reasoning. This is how a manager measures whether their criteria and prompt do their job.</li>
+<li><strong>Runtime:</strong> what is in force right now: engines, key, models, calls today against the cap, tokens, cost, the simulated clock, the meeting time zone, and the <strong>last model error</strong>.</li>
+<li><strong>Ask Gemini:</strong> a button that asks the model a trivial question now and reports exactly what came back, so a failing key, model or quota is never a mystery.</li>
+</ul>
+<h4 id="e13-meeting-scheduling-that-books-real-times">E13. Meeting scheduling that books real times</h4>
+<p><strong>What.</strong> When a prospect is interested, the SDR proposes up to <strong>three real times</strong> on different weekdays, inside the assigned rep's working hours, at least about a day out, in the meeting time zone (default IST), for a configurable length (default 30 minutes). It then <strong>reads the answer</strong>: a pick ("the second one", or a named day, or a day and time), a decline, a counter-offer ("Friday at 5"), or unclear. A pick books the slot and builds a calendar invite (<code>.ics</code>, with organiser and attendee); a decline closes politely; a counter-offer gets other times once, then goes to a human.</p>
+<p><strong>Guarantees.</strong> Two prospects are never booked into the same slot on a rep's calendar. If the campaign requires approval for meeting times, the proposal waits in Approvals first. Reading the reply uses Gemini with a deterministic fallback.</p>
+<p><strong>Why.</strong> "Book or escalate" is the last step of the brief's end-to-end chain, and it is where many systems stop at "meeting requested". This one produces an actual meeting.</p>
+<h4 id="e14-approval-levels">E14. Approval levels</h4>
+<p><strong>What.</strong> Each campaign chooses how much a human must approve.</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Manual</strong></td>
+<td>Every first message and every follow-up waits for a human</td>
+</tr>
+<tr>
+<td><strong>Assisted</strong></td>
+<td>Drafts wait until a human has approved a chosen number of the same kind, then a draft whose fit is above a chosen score goes out on its own</td>
+</tr>
+<tr>
+<td><strong>Autonomous</strong></td>
+<td>Drafts go out on their own</td>
+</tr>
+</tbody>
+</table>
+<p><strong>At every level:</strong> an escalation (pricing, security, compliance, legal, hostile, unclear) always needs a human, and a draft that fails the grounding check is never auto-sent. Meeting times have their own switch. For <strong>real</strong> people the campaign's level is overridden: a human approves every message unless <code>REAL_AUTO_SEND</code> is explicitly turned on.</p>
+<hr />
+<h3 id="group-4-real-channels">Group 4: Real channels</h3>
+<h4 id="e15-real-email-through-the-gmail-api">E15. Real email through the Gmail API</h4>
+<p><strong>What.</strong> A complete Gmail integration, written by us, with no email library:</p>
+<ul>
+<li><strong>Authentication</strong> by OAuth refresh token, with the access token cached until shortly before it expires.</li>
+<li><strong>Sending</strong> a properly formed message (encoded headers, UTF-8 body, optional attachments) in the right <strong>thread</strong>, as the assigned rep's name, with a <strong><code>List-Unsubscribe</code></strong> header.</li>
+<li><strong>Reading replies</strong> by polling each contacted person's thread, keeping only the person's new words (the quoted earlier message is cut however their mail program marks it, and HTML-only replies are read).</li>
+<li><strong>Recognising who wrote a message</strong> by the ids of messages <em>we</em> sent, not by the From address, so a person testing on the same Gmail account as the sender still has their reply read.</li>
+<li><strong>Bounces and automatic replies</strong>: a bounce marks the address as not working and stops; an out-of-office is noted and never answered.</li>
+<li><strong>Calendar invites</strong> attached to the first email after a meeting is booked.</li>
+</ul>
+<p><strong>Why.</strong> The brief suggests Gmail and says "take real actions". Real email is the one channel a judge can verify from their own inbox.</p>
+<p><strong>Verified.</strong> Sending was <strong>used for real by the team</strong>: a test email sent from the deployed site reached a real inbox. Threading, reply reading, bounce and auto-reply handling and approved replies are covered end to end against a fake Gmail server; an end-to-end reply exchange against live Gmail is not yet in the test suite (section 16.2).</p>
+<h4 id="e16-real-sms-through-twilio">E16. Real SMS through Twilio</h4>
+<p><strong>What.</strong> Sending a text and receiving replies through a <strong>signed webhook</strong>: the endpoint sits outside sign-in (Twilio cannot sign in) and every request must carry a valid Twilio signature, rebuilt from the public URL, so an unsigned or forged request is refused. A signed text from a real person is matched to them by phone number and handled as their reply.</p>
+<p><strong>Status.</strong> Built and tested against a fake Twilio server (including the forged-signature cases); not yet run against live Twilio (section 16).</p>
+<h4 id="e17-a-voice-sdr-that-holds-a-real-call">E17. A Voice SDR that holds a real call</h4>
+<p><strong>What.</strong> The brief's seventh agent. Twilio places the call and does the speech-to-text and text-to-speech; our Voice SDR decides what to say <strong>one turn at a time</strong> through the same engine chain (Gemini with a plain rule fallback). It introduces itself and asks if now is a good time, listens, answers from the offer and knowledge only, handles "not now" and "not interested", ends the call politely, and stops after at most six turns. Afterwards the transcript joins the conversation, and the outcome is acted on: <strong>someone who asks not to be called is added to the do-not-contact list; someone who wants more is handed to a human to book the meeting.</strong></p>
+<p><strong>Rules.</strong> Real campaigns only, and only when Twilio and the platform's Voice channel and agent are switched on.</p>
+<p><strong>Status.</strong> Built and tested against fakes (the turn loop, the opt-out, the hand-off); not run against a live phone call.</p>
+<h4 id="e18-safety-for-real-sending">E18. Safety for real sending</h4>
+<p>Real messages reach real people, so this is where we were most careful.</p>
+<table>
+<thead>
+<tr>
+<th>Safeguard</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Master switch</strong> <code>REAL_SENDING</code></td>
+<td>Off by default. Off means nothing is ever sent for real, whatever else is set</td>
+</tr>
+<tr>
+<td><strong>Human approval</strong></td>
+<td>Every message to a real person waits in Approvals. Only an explicit <code>REAL_AUTO_SEND</code> changes that</td>
+</tr>
+<tr>
+<td><strong>Recipient allow-list</strong> <code>REAL_SEND_ALLOWLIST</code></td>
+<td>Optional: real messages go only to the addresses or numbers listed. Tolerant of quotes, spaces and capitals</td>
+</tr>
+<tr>
+<td><strong>Real campaigns only</strong></td>
+<td>A simulated campaign or a sandbox can never send, even with a real-looking address (and the launch review warns when someone types a real address into a simulated campaign)</td>
+</tr>
+<tr>
+<td><strong>Made-up addresses refused</strong></td>
+<td>A real contact cannot have an <code>.example</code> address, and a real send to one is blocked</td>
+</tr>
+<tr>
+<td><strong>Truthful delivery</strong></td>
+<td>A message shows <em>sending</em>, <em>sent</em> (with the provider's id) or <strong>NOT DELIVERED with the reason</strong>; a failure is never shown as sent, and it appears on the prospect and in the event feed</td>
+</tr>
+<tr>
+<td><strong>Opt-out</strong></td>
+<td>Every real email ends with an opt-out line and carries a <code>List-Unsubscribe</code> header; a reply of "unsubscribe" or "stop" puts the person on the global list</td>
+</tr>
+<tr>
+<td><strong>No LinkedIn</strong></td>
+<td>LinkedIn cannot be sent for real, so a real campaign cannot plan it</td>
+</tr>
+<tr>
+<td><strong>Launch review</strong></td>
+<td>Blocks a real campaign with no channel that can really send, and warns about the rest</td>
+</tr>
+</tbody>
+</table>
+<h4 id="e19-professional-emails-not-templates">E19. Professional emails, not templates</h4>
+<p><strong>What.</strong> After trying real sending we found our first drafts were too short and read like templates (the prompts capped an email at 90 words, and the rule fallback wrote one-liners). We rewrote drafting so a first email is a proper business email of about 110 to 170 words with a fixed shape: a greeting line using the person's name and title, a paragraph on <em>why this person</em> built on one real fact, a paragraph on what is offered and why it could matter, and one low-pressure ask. Follow-ups and replies follow the same shape at a shorter length. The signature is added once at send time ("Best regards", the campaign's sign-off or the rep's name, and the opt-out line), and the campaign <strong>persona</strong> (tone and sign-off) is part of every prompt.</p>
+<p><strong>Why.</strong> "Context and personalisation" is 15 points, and a real recipient decides in two seconds. We changed this because <em>using</em> the system showed us it was wrong.</p>
+<hr />
+<h3 id="group-5-manager-tooling">Group 5: Manager tooling</h3>
+<h4 id="e20-prompt-management-like-git-and-a-prompt-inspector">E20. Prompt management like Git, and a prompt inspector</h4>
+<p><strong>What.</strong> Beyond versions and rollback (section 5.8): saving a campaign prompt <strong>requires a message</strong> that says what changed and why; each version shows its author, time, message and <strong>how well it performed</strong> (share of opening messages that got a reply); a struggling campaign shows a banner that points at the brief; and <strong>View prompt</strong> on any hand-off note rebuilds the exact prompt versions that agent ran with.</p>
+<p><strong>Why.</strong> The brief asks managers to be able to answer "which configuration produced this outcome?". A message per change and a performance figure per version turn a prompt history into an experiment log.</p>
+<h4 id="e21-analytics-that-explain-the-prompts">E21. Analytics that explain the prompts</h4>
+<p><strong>What.</strong> For every agent, a <strong>success rate defined per agent</strong>, measured from what actually happened to each prospect and split <strong>by campaign and by the prompt version the agent ran with</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>What counts as success</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Research</td>
+<td>It found at least one specific reason to get in touch</td>
+</tr>
+<tr>
+<td>ICP Fitment</td>
+<td>Its qualified prospects, once contacted, replied</td>
+</tr>
+<tr>
+<td>Outreach Strategy</td>
+<td>Its plan led to a message actually being sent</td>
+</tr>
+<tr>
+<td>Personalisation</td>
+<td>Its opening message got a reply</td>
+</tr>
+<tr>
+<td>Conversation</td>
+<td>A reply it handled ended in a booked meeting</td>
+</tr>
+<tr>
+<td>Follow-up</td>
+<td>A follow-up got a reply</td>
+</tr>
+</tbody>
+</table>
+<p>A <strong>campaign health</strong> verdict (new, healthy, watch, struggling) with the reasons ("only 3 of 40 prospects qualified", "no replies from 12 people contacted", "people rejected 60% of drafts") and <strong>what to try</strong> ("loosen the qualification criteria", "change the brief"), with a link to the place to change it. Small samples are labelled as small.</p>
+<p><strong>Why.</strong> "Can you measure and improve the system's own performance?" is a rubric category. The brief's stretch idea (duplicate a campaign and compare) tells you <em>that</em> a variant did better; this tells you <em>which agent and which prompt version</em> made the difference.</p>
+<h4 id="e22-a-knowledge-library-and-a-full-agents-and-prompts-screen">E22. A knowledge library and a full Agents and Prompts screen</h4>
+<p><strong>What.</strong> The <strong>Knowledge</strong> screen lists every source across campaigns, which campaigns use it, lets a manager give it to more campaigns or take it away from one, and lets them <strong>test retrieval</strong>: ask a question and see exactly which passages an agent in that campaign would be shown. The <strong>Agents and Prompts</strong> screen shows for each agent what it does in the SDR, what it reads and writes, its <strong>fixed built-in instruction</strong> (so nothing an agent is told is hidden), its versions, and a preview of the assembled prompt for any campaign.</p>
+<h4 id="e23-a-simulated-clock-with-real-hard-limits">E23. A simulated clock with real hard limits</h4>
+<p><strong>What.</strong> Follow-up waits, working hours, the daily limit and the contact-frequency cap are <strong>hard limits that no agent can override</strong>: an agent may propose a touch, and a separate function decides whether it may go out now. Because a real 72-hour follow-up wait cannot be shown in a demo, these run on a <strong>simulated clock</strong> (one simulated hour lasts three seconds by default, so a day lasts 72 seconds), which a setting changes to real time. Representatives add their own limits: a daily limit, working hours and channels per rep.</p>
+<p><strong>Why.</strong> It shows the limits <em>working</em> in a demo without waiting days, and one setting makes them real.</p>
+<h4 id="e24-a-designed-interface">E24. A designed interface</h4>
+<p><strong>What.</strong> A consistent visual language: a <strong>centred page heading</strong> and a type scale (page heading, section heading, small-caps label, field label, body, supporting text); <strong>one colour per status, the same everywhere</strong> (rejected red, meeting green, contacted blue, qualified purple, engaged amber, discovered grey); readable secondary text; no em dashes; every screen has a loading state, an error state and an empty state, and an error boundary means a bug in one screen cannot blank the app. The Reject action asks for its reason only when rejecting, and says why it is asked.</p>
+<hr />
+<h3 id="group-6-reliability-and-operations">Group 6: Reliability and operations</h3>
+<h4 id="e25-honest-failure-handling-hold-do-not-reject-and-say-why">E25. Honest failure handling: hold, do not reject, and say why</h4>
+<p><strong>What.</strong> The brief asks that the system "handle malformed model output, failed API calls and empty states without crashing". We went further and made the <em>result of a failure</em> correct and visible:</p>
+<ul>
+<li><strong>Every stage runs in its own error boundary</strong>, per campaign; a failure is counted, shown on the campaign as a failed workflow, and retried, and never stops another campaign.</li>
+<li><strong>Malformed or empty model output, HTTP errors, retries, model fallback and quota exhaustion</strong> all end in a deterministic decision, never a crash.</li>
+<li><strong>When the model is down, the system does not guess.</strong> The imitated search adds nobody rather than inventing people. A prospect that the rules cannot judge <strong>waits and is retried</strong> every minute rather than being rejected. Real messages are never sent because a step degraded.</li>
+<li><strong>Every fallback says why.</strong> When the rules answered because the model did not, the Decision Journal entry, the prospect's own log and the dossier hand-off note all record: <em>"The AI did not respond (the actual error), so the rule engine decided this step."</em> Managers can see how many decisions were made without the model and why.</li>
+<li><strong>You can see why the model failed:</strong> the last model error is on Dev, Runtime, the Gemini card in Settings shows <em>Failing</em> with the reason, and the <strong>Ask Gemini</strong> button tests it on demand.</li>
+</ul>
+<p><strong>Why this is an extra.</strong> We learned it the hard way: on our live site Gemini stopped answering, the free name-list generator filled three campaigns with junk, and the rule engine rejected all 21 of them. A judge would have seen "everything rejected". The fix is the policy above.</p>
+<h4 id="e26-operations">E26. Operations</h4>
+<ul>
+<li><strong>Storage:</strong> one state document, kept in a JSON file locally or as one row in Neon Postgres; <strong>additive migrations</strong> that never wipe saved data; and an automatic <strong>backup</strong> before any reseed. (An early schema bump wiped a campaign we had built; that led directly to this design and to the rule that campaigns are never deleted.)</li>
+<li><strong>Sign-in:</strong> signed session tokens, an optional access code, and "who did this" recorded on approvals, pauses and edits.</li>
+<li><strong>One-service deployment:</strong> Docker, Render and Neon, with UptimeRobot keeping the free host awake.</li>
+<li><strong>A smoke test</strong> for any running deployment that checks the pause-isolation demonstration using a per-campaign "last worked on" proof-of-life timestamp (it replaced a fragile prospect-count check that produced false failures on the live site).</li>
+<li><strong>A repeatable demo setup script</strong> that archives the current campaigns and launches three demo-ready ones.</li>
+<li><strong>Archived campaigns</strong> disappear from the dashboard, feed, journal, approvals and prospects list while their data is kept.</li>
+</ul>
+<h4 id="e27-tests-fake-providers-and-the-bugs-that-using-it-found">E27. Tests, fake providers, and the bugs that using it found</h4>
+<p><strong>What.</strong> 187 automated tests in 21 files, all passing. The AI and channel providers are tested against <strong>fake HTTP servers we wrote</strong> (Gemini, DronaHQ, Gmail, Twilio), so the tests run offline and cover failure cases (429 quota errors, malformed output, forged signatures, bounces) that a real provider will not produce on demand.</p>
+<p><strong>Bugs found by using the system, not by reading it</strong> (each has a regression test):</p>
+<table>
+<thead>
+<tr>
+<th>Bug</th>
+<th>How it was found</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A reply from the same Gmail account that sends (a test on yourself) was thrown away as "our own message"</td>
+<td>Real email use</td>
+<td>Messages are ours only if we sent them through the API, never by From address</td>
+</tr>
+<tr>
+<td>Approving a drafted reply to a real person recorded it but <strong>never emailed it</strong></td>
+<td>Reviewing the approval path after real use</td>
+<td>Approval of any reply to a real person now sends through <code>dispatch</code></td>
+</tr>
+<tr>
+<td>Emails were too short and templated</td>
+<td>Reading the first real email</td>
+<td>New drafting shape (E19)</td>
+</tr>
+<tr>
+<td>A bounce or out-of-office could be answered as if the person had replied</td>
+<td>Testing the reply path</td>
+<td>Detected by headers and subject; a bounce stops, an auto-reply is noted</td>
+</tr>
+<tr>
+<td>Quoted text wrapped over two lines leaked into replies; HTML-only replies were unreadable</td>
+<td>Testing real reply shapes</td>
+<td>Robust quote stripping and an HTML fallback</td>
+</tr>
+<tr>
+<td>The sandbox's first message was held by the simulated working-hours clock</td>
+<td>Running the sandbox against a live server</td>
+<td>Sandboxes ignore the simulated clock</td>
+</tr>
+<tr>
+<td>Completed campaigns still showed their approvals and prospects</td>
+<td>Using the live site</td>
+<td>Completing withdraws pending approvals; closed campaigns are hidden by default</td>
+</tr>
+<tr>
+<td>The integrations list said "Connected" for everything</td>
+<td>A review of the Settings screen</td>
+<td>It is now computed from the running configuration</td>
+</tr>
+<tr>
+<td>All prospects rejected when the model was down</td>
+<td>The live site</td>
+<td>Hold, do not reject (E25)</td>
+</tr>
+<tr>
+<td>Intermittent test timeouts under load</td>
+<td>Repeated full runs</td>
+<td>The engine test files no longer load the embedding model</td>
+</tr>
+</tbody>
+</table>
+<h4 id="e28-documentation-a-new-engineer-can-follow">E28. Documentation a new engineer can follow</h4>
+<p>A README with setup, environment variables, deployment (including the zero-cost path) and limitations; a <strong>23-section system guide</strong> (what the product is, the words we use, the pipeline, every agent, the rules no agent can break, the data model, a file-by-file map, recipes for adding things, decisions and gotchas, and what is simulated versus real); a <strong>roadmap</strong> of what is not built, with sizes; and a <strong>demo script</strong> with a fallback table. Together about 15,000 words.</p>
+<hr />
+<h2 id="9-one-sdr-across-channels">9. One SDR across channels</h2>
+<p><strong>The rubric asks (25 points):</strong> does it intelligently coordinate LinkedIn, email, SMS and voice, like one SDR rather than five bots?</p>
+<p><strong>Our answer is that coordination is done by policy and shared memory, not by five independent senders.</strong></p>
+<h3 id="91-what-makes-it-one-sdr">9.1 What makes it one SDR</h3>
+<table>
+<thead>
+<tr>
+<th>Mechanism</th>
+<th>How it works</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>One plan per prospect</strong></td>
+<td>The Outreach Strategy agent chooses an ordered sequence of channels and the wait between touches, from the prospect's role and seniority and the campaign's enabled channels</td>
+<td>A founder is reachable on LinkedIn first; a CTO or a risk leader expects a considered email; a regulated-industry leader prefers email to SMS. The plan is the SDR's judgment about <em>this person</em></td>
+</tr>
+<tr>
+<td><strong>Channel rules in code, not in the model</strong></td>
+<td>SMS is never the first touch and is only a later nudge; voice, if allowed, is the last touch; every planned channel must be one the campaign has enabled; the model's choice is re-validated after parsing</td>
+<td>The model advises; the platform enforces</td>
+</tr>
+<tr>
+<td><strong>One memory</strong></td>
+<td>The dossier and hand-off notes are shared across all channels. A reply on email is visible to the follow-up that would have gone on LinkedIn</td>
+<td>The prospect never gets a message that ignores what they already said</td>
+</tr>
+<tr>
+<td><strong>One cadence policy</strong></td>
+<td>A campaign has a maximum number of touches (1 to 6) and a wait between them (24 to 168 hours). A reply ends the sequence. An opt-out on any channel stops all channels. The Follow-up agent re-checks the suppression list before each follow-up</td>
+<td>The system stops when it should: on a reply, an opt-out, the touch limit, or a limit breach</td>
+</tr>
+<tr>
+<td><strong>One set of hard limits</strong></td>
+<td>Working hours, a daily limit, a contact-frequency cap (at most 4 touches to one person in 7 days across all campaigns), and per-rep limits apply to every channel</td>
+<td>No channel can bypass a limit another respects</td>
+</tr>
+<tr>
+<td><strong>One sender identity</strong></td>
+<td>A prospect is contacted as the same assigned rep across channels while that rep can still send</td>
+<td>It reads as one person</td>
+</tr>
+<tr>
+<td><strong>One place a message becomes real</strong></td>
+<td><code>recordTouch</code> and <code>recordReply</code> record every message; <code>dispatch</code> turns it into a real send for real campaigns only</td>
+<td>Every channel takes the same path through the same safeguards</td>
+</tr>
+<tr>
+<td><strong>Channel-level control</strong></td>
+<td>A manager can pause one channel across all campaigns without touching anything else</td>
+<td>Bounce spike on email? Pause email, keep everything else running</td>
+</tr>
+</tbody>
+</table>
+<h3 id="92-channel-status-honestly">9.2 Channel status, honestly</h3>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Simulated campaigns</th>
+<th>Real campaigns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Email</strong></td>
+<td>Planned, approved, recorded; nothing sent</td>
+<td><strong>Real</strong>, through the Gmail API, with replies read from the thread</td>
+</tr>
+<tr>
+<td><strong>LinkedIn</strong></td>
+<td>Planned, approved, recorded; nothing sent</td>
+<td>Not available (no sanctioned sending API; the channel is blocked in real mode)</td>
+</tr>
+<tr>
+<td><strong>SMS</strong></td>
+<td>Planned, approved, recorded; nothing sent</td>
+<td>Built on Twilio with a signed reply webhook; tested against a fake Twilio, not run live</td>
+</tr>
+<tr>
+<td><strong>Voice</strong></td>
+<td>Never used (the Voice SDR only calls real people)</td>
+<td>Built on Twilio with a turn-by-turn Voice SDR; tested against fakes, not run live</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10-context-and-personalisation-without-hallucination">10. Context and personalisation without hallucination</h2>
+<p><strong>The rubric asks (15 points):</strong> do agents actually understand the prospect before acting, without hallucinating?</p>
+<h3 id="101-what-the-agents-know-before-they-act">10.1 What the agents know before they act</h3>
+<p>Every agent receives a structured bundle: the <strong>person and organisation</strong>, their <strong>attributes</strong>, the <strong>campaign</strong> (objective, offer, ICP, personas, criteria, approval policy), the <strong>whole dossier</strong> (facts with sources, reasons to reach out, gaps, and every earlier agent's hand-off note), the <strong>retrieved knowledge</strong>, the <strong>conversation so far</strong>, and the <strong>campaign's prompts and persona</strong>. Nothing is guessed from the model's general knowledge when it can be retrieved or read.</p>
+<h3 id="102-seven-layers-between-the-model-and-a-false-claim">10.2 Seven layers between the model and a false claim</h3>
+<p>We treat hallucination as something to defend against in depth, not with a single prompt line.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. <strong>Input-only prompts</strong></td>
+<td>Every agent's fixed instruction says to use only facts in the input, never invent numbers, customers, titles or news, and to say when something is unknown</td>
+</tr>
+<tr>
+<td>2. <strong>Retrieval before decisions</strong></td>
+<td>Agents retrieve campaign knowledge before an important decision or a customer-facing draft, and the sources are recorded</td>
+</tr>
+<tr>
+<td>3. <strong>Structured output</strong></td>
+<td>The API itself constrains the response to our schema, so malformed output is rare and is handled when it happens</td>
+</tr>
+<tr>
+<td>4. <strong>Research drops ungrounded facts</strong></td>
+<td>Any research fact whose figures or claims are not in the prospect's own data is dropped, never stored</td>
+</tr>
+<tr>
+<td>5. <strong>The grounding check</strong></td>
+<td>A deterministic check on every draft for unsupported figures, certification claims, prices and meeting times; one rewrite; a hard block on auto-send</td>
+</tr>
+<tr>
+<td>6. <strong>Human approval</strong></td>
+<td>Drafts wait for a human under Manual and Assisted levels, and always for anything real (unless explicitly overridden)</td>
+</tr>
+<tr>
+<td>7. <strong>Honest data labels</strong></td>
+<td>Every prospect says where it came from and whether it is real; fictional emails use the reserved <code>.example</code> domain</td>
+</tr>
+</tbody>
+</table>
+<h3 id="103-personalisation">10.3 Personalisation</h3>
+<ul>
+<li><strong>One real fact per message.</strong> The Personalisation agent references exactly one fact that appears in the input, so a message is specific without inventing anything.</li>
+<li><strong>A voice per campaign.</strong> A persona (tone and sign-off) is part of every prompt: "calm, specific and brief, one engineer writing to another" for the SaaS campaign; "warm, respectful of academic titles" for the campus campaign; "respectful, precise and honest" for the summit campaign.</li>
+<li><strong>Channel-appropriate.</strong> An email is a proper business email; an SMS is at most 300 characters; a LinkedIn message is short. Titles are respected ("Hello Professor Rao").</li>
+<li><strong>Follow-ups add something new.</strong> The Follow-up agent must add one new relevant fact and must not repeat the opening, apologise for writing or say "just checking in". A last touch closes the loop politely.</li>
+<li><strong>Replies answer what was said.</strong> The Conversation agent's reply addresses the actual message and offers a next step.</li>
+</ul>
+<hr />
+<h2 id="11-end-to-end-sdr-capability">11. End-to-end SDR capability</h2>
+<p><strong>The rubric asks (15 points):</strong> find, research, qualify, contact, follow up, respond, book or escalate: how much of that chain really works?</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>What happens</th>
+<th>Real or simulated</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Find</strong></td>
+<td>Real contacts ranked by match, or the imitated search, or a named person</td>
+<td>Real (hand-entered) or simulated</td>
+<td>Real contacts tab; search playground</td>
+</tr>
+<tr>
+<td><strong>Research</strong></td>
+<td>A brief of facts, reasons to reach out and gaps</td>
+<td>Real logic over the data it has</td>
+<td>Prospect page dossier</td>
+</tr>
+<tr>
+<td><strong>Qualify</strong></td>
+<td>A score, evidence and a decision against the criteria and exclusions</td>
+<td>Real (rules plus Gemini)</td>
+<td>Decision Journal; golden set; real-data tests</td>
+</tr>
+<tr>
+<td><strong>Plan and draft</strong></td>
+<td>A channel sequence and a grounded draft</td>
+<td>Real</td>
+<td>Approvals queue; grounding banner</td>
+</tr>
+<tr>
+<td><strong>Approve</strong></td>
+<td>A human approves, edits or rejects, with a reason</td>
+<td>Real</td>
+<td>Approvals screen</td>
+</tr>
+<tr>
+<td><strong>Contact</strong></td>
+<td>The message is sent</td>
+<td><strong>Real for email</strong> on real campaigns; simulated otherwise</td>
+<td>Real email tab; delivery status on each message</td>
+</tr>
+<tr>
+<td><strong>Follow up</strong></td>
+<td>A cadence follow-up after silence, stopping on reply, opt-out or the touch limit</td>
+<td>Real logic, simulated clock</td>
+<td>Prospect page; smoke test</td>
+</tr>
+<tr>
+<td><strong>Respond</strong></td>
+<td>A reply is routed (opt-out, hostile, out-of-office by embeddings; the rest by the Conversation agent)</td>
+<td>Real logic; replies are real for real email and for the judge sandbox, simulated otherwise</td>
+<td>Judge sandbox; reply router tests</td>
+</tr>
+<tr>
+<td><strong>Book</strong></td>
+<td>Real times inside the rep's hours, the answer read, the slot booked without a clash, an invite produced</td>
+<td>Real logic; the invite is a file, not a live calendar entry</td>
+<td>Judge sandbox scorecard</td>
+</tr>
+<tr>
+<td><strong>Escalate</strong></td>
+<td>Pricing, security, compliance, legal, hostile or unclear replies go to a human with a recommended action</td>
+<td>Real</td>
+<td>Approvals screen</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The strongest single demonstration</strong> is the judge sandbox: a person who has never seen the system types a reply and the SDR books a meeting with an invite, with a scorecard that says whether it stayed inside the rep's hours, avoided a clash and made no unsupported claim.</p>
+<hr />
+<h2 id="12-product-and-user-experience">12. Product and user experience</h2>
+<p><strong>The rubric asks (10 points):</strong> could a real sales team pick this up and use it?</p>
+<h3 id="121-the-screens">12.1 The screens</h3>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Command Center</strong></td>
+<td>Every campaign at a glance; a portfolio funnel; KPIs; a live agent feed; the AI efficiency panel; the kill switch</td>
+</tr>
+<tr>
+<td><strong>Campaigns / Create and Edit</strong></td>
+<td>A blank form whose hints say what each field is <em>for</em> (no example values to overwrite); a choice of an audience or one person; a choice of real or simulated data; the campaign brief (the initial prompt)</td>
+</tr>
+<tr>
+<td><strong>Campaign detail</strong></td>
+<td>Status and Pause/Resume; the funnel; outreach and agent activity; outcomes; the SDR Blueprint; prompts and harness; agents; reps; knowledge; the launch review</td>
+</tr>
+<tr>
+<td><strong>Prospects</strong></td>
+<td>All prospects across active campaigns, sortable, with a stage colour</td>
+</tr>
+<tr>
+<td><strong>Prospect detail</strong></td>
+<td>The dossier, plan, conversation with delivery status, meeting, hand-off notes with "View prompt", and the recommended next action</td>
+</tr>
+<tr>
+<td><strong>Approvals</strong></td>
+<td>A queue with the draft, the AI's recommendation, the grounding result, Edit, Approve and Send, and Reject with a reason</td>
+</tr>
+<tr>
+<td><strong>Decision Journal</strong></td>
+<td>Every decision with its agent, prompt version, evidence, retrieved sources and the engine that decided</td>
+</tr>
+<tr>
+<td><strong>Agents and Prompts</strong></td>
+<td>The agent library: role, reads, writes, the fixed instruction, versions, compare, and the assembled prompt</td>
+</tr>
+<tr>
+<td><strong>Knowledge</strong></td>
+<td>The cross-campaign library and the retrieval tester</td>
+</tr>
+<tr>
+<td><strong>Representatives</strong></td>
+<td>Reps, their limits and hours, offboarding and reassignment</td>
+</tr>
+<tr>
+<td><strong>Compare (Analytics)</strong></td>
+<td>Campaigns side by side, campaign health, and each agent's success by prompt version</td>
+</tr>
+<tr>
+<td><strong>Dev</strong></td>
+<td>Judge sandbox, real contacts, real email, search playground, real-data tests, runtime</td>
+</tr>
+<tr>
+<td><strong>Settings</strong></td>
+<td>Kill switch, agent and channel controls, the suppression list</td>
+</tr>
+<tr>
+<td><strong>Login</strong></td>
+<td>Sign-in</td>
+</tr>
+</tbody>
+</table>
+<h3 id="122-design-decisions-that-came-from-thinking-about-a-real-manager">12.2 Design decisions that came from thinking about a real manager</h3>
+<ul>
+<li><strong>Say what a field is for, not an example.</strong> The create form has hints, not pre-filled example values, so nobody launches a campaign with someone else's example text.</li>
+<li><strong>A launch review before going Live</strong>, in the manager's language.</li>
+<li><strong>Nothing surprising happens to a person.</strong> Real sending is behind a switch, an allow-list and a human approval; a real address typed into a simulated campaign is flagged.</li>
+<li><strong>The reason a human rejects is asked at the moment they reject</strong>, and it is saved in the Decision Journal so the team can see why.</li>
+<li><strong>Colour means one thing.</strong> Status colours are identical on the Prospects page, the funnel and the badges.</li>
+<li><strong>No blank screens.</strong> Every screen has a loading state, an error state naming what failed, and an empty state saying what to do next.</li>
+<li><strong>Keyboard and screen-reader basics.</strong> Labelled inputs, focus outlines, <code>aria-pressed</code> on toggles and chips, and table rows that open with Enter.</li>
+</ul>
+<hr />
+<h2 id="13-engineering-quality">13. Engineering quality</h2>
+<p><strong>The rubric asks (10 points):</strong> architecture, modularity, reliability, error handling, security.</p>
+<h3 id="131-codebase-and-repository">13.1 Codebase and repository</h3>
+<ul>
+<li><strong>One shared repository, 60 commits</strong>, from the whole team, with descriptive messages that say what changed and why.</li>
+<li><strong>A clear structure that separates agents, services, data and frontend:</strong></li>
+</ul>
+<pre><code>backend/
+  src/
+    routes/        thin HTTP layer (API and the signed Twilio webhooks)
+    services/      business logic: campaigns, scheduler, approvals, prompts, reps,
+                   knowledge, analytics, meetings, limits, conflict, grounding, dev tools
+      agentEngine/ the agents: DronaHQ adapter, Gemini, Anthropic, rules, the chain
+      channels/    Gmail, Twilio, the Voice SDR, and dispatch
+    db/            storage adapters, seed data, additive migrations
+    middleware/    error handling
+    utils/         validation and formatting
+  data/knowledge/  the knowledge documents and canonical reply examples
+  eval/            the ICP golden set and its runner
+  scripts/         smoke test, demo setup, diagnostics, Gemini model listing
+  test/            187 tests in 21 files
+frontend/src/
+  screens/         14 screens
+  components/      shell, campaign panels, analytics, dev tools, ui primitives
+  services/        api.js: every backend call in one place
+  utils/           formatting, validation, diff
+matching-service/  the standalone Python prototype of the matching logic, with tests
+docs/              system guide, roadmap, demo script, this report
+</code></pre>
+<ul>
+<li><strong>Secrets stay out of version control:</strong> every credential is an environment variable; <code>.env</code> files are ignored; <code>.env.example</code> documents every setting; the UI never shows a secret; Settings shows <em>whether</em> something is connected, not its value.</li>
+<li><strong>A README</strong> with an overview, setup and run steps, every environment variable, the tech stack, an architecture overview, and a file and folder map; a deeper system guide beside it.</li>
+<li><strong>No half-finished paths:</strong> features that are not built are listed on the roadmap and marked in the UI ("Not built"), not left as dead code. The one deliberate exception is the standalone matching service, kept as tested reference and stated as such.</li>
+</ul>
+<h3 id="132-modularity">13.2 Modularity</h3>
+<ul>
+<li><strong>One interface, four engines.</strong> Every agent has one function with one contract, and <code>agentEngine/index.js</code> walks the chain. Adding an engine or changing the order is configuration.</li>
+<li><strong>The pipeline is defined once</strong> (<code>sdrSteps.js</code>) and used by both the scheduler and the UI.</li>
+<li><strong>One place a prospect is created</strong> (<code>prospects.js</code>), <strong>one place a touch is recorded</strong> (<code>outreach.js</code>), <strong>one place a message becomes real</strong> (<code>dispatch.js</code>), <strong>one place limits are decided</strong> (<code>limits.js</code>), <strong>one place a campaign becomes "real"</strong> (<code>realMode.js</code>). Each cross-cutting rule has one implementation.</li>
+<li><strong>The UI talks to the backend through one file</strong> (<code>api.js</code>), so a screen never builds a URL.</li>
+</ul>
+<h3 id="133-reliability-and-error-handling">13.3 Reliability and error handling</h3>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Malformed, empty or off-schema model output</td>
+<td>Detected, retried within limits, and ends in a rule-engine decision</td>
+</tr>
+<tr>
+<td>Provider errors and rate limits</td>
+<td>Retried with growing pauses, honouring <code>Retry-After</code>; the next model in the list is tried; then the rule engine</td>
+</tr>
+<tr>
+<td>Provider quota exhausted</td>
+<td>The daily cap and the fallback keep the loop running; where the rules cannot judge, the prospect waits</td>
+</tr>
+<tr>
+<td>A step throws</td>
+<td>Contained in that campaign's stage; counted and shown as a failed workflow; the next campaign still runs</td>
+</tr>
+<tr>
+<td>A campaign with no active rep</td>
+<td>Held with a plain reason and flagged, not silently failing</td>
+</tr>
+<tr>
+<td>A real message that cannot be delivered</td>
+<td>Shown as not delivered with the reason; the prospect is not advanced as if it had been</td>
+</tr>
+<tr>
+<td>Bad input from the UI</td>
+<td>Validated server-side with field-level errors (sizes, formats, required fields)</td>
+</tr>
+<tr>
+<td>Deploy or restart</td>
+<td>State reloads from Neon or the JSON file; usage counters persist</td>
+</tr>
+<tr>
+<td>Schema changes</td>
+<td>Additive migrations only; a backup before any reseed</td>
+</tr>
+</tbody>
+</table>
+<h3 id="134-security">13.4 Security</h3>
+<ul>
+<li><strong>Authentication:</strong> signed session tokens (HMAC), an optional access code, a session lifetime, and the acting user recorded on every consequential action.</li>
+<li><strong>The public webhooks</strong> (Twilio) sit outside sign-in and are protected by signature verification with a timing-safe comparison; a request without a valid signature is refused.</li>
+<li><strong>Real-send safeguards</strong> (E18): a master switch, an allow-list, mandatory human approval, and a block on made-up addresses.</li>
+<li><strong>Input limits:</strong> a request body limit, a maximum size for knowledge sources, clamped numeric settings, and an allowed-origins list for cross-origin calls.</li>
+<li><strong>Data hygiene:</strong> a real contact cannot carry a made-up address; the suppression list supports exact addresses and domain wildcards.</li>
+<li><strong>Known gap:</strong> sign-in is a shared access code with a display name, not individual accounts with roles (section 17).</li>
+</ul>
+<h3 id="135-testing">13.5 Testing</h3>
+<ul>
+<li><strong>187 tests</strong> in <code>node:test</code>, running in about a minute, covering: the engine adapters and their failure modes; the golden ICP set; cost and cap behaviour; storage and migrations; campaign lifecycle and isolation; the scheduler and cadence; agent plans; grounding; sign-in; prompts and versions; representatives; the blueprint; research and imitated search; meeting scheduling; the Dev sandbox; analytics; the knowledge library; real sending against fake Gmail and Twilio; and model-outage behaviour.</li>
+<li><strong>Provider fakes</strong> mean the suite is offline and deterministic.</li>
+<li><strong>Test-suite hygiene:</strong> test files use throwaway data files and usage counters, so running tests can never touch real data.</li>
+</ul>
+<hr />
+<h2 id="14-measurement-and-optimisation">14. Measurement and optimisation</h2>
+<p><strong>The rubric asks (5 points):</strong> can you measure and improve the system's own performance?</p>
+<p>We built a measure, diagnose, change, compare loop, all inside the product.</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Where it is answered</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>How much does the AI cost, and per what?</strong></td>
+<td>The AI Efficiency panel: model calls against the daily cap, tokens, estimated cost, decisions made with no LLM call, and unit costs per prospect scored, per qualified lead and per conversation</td>
+</tr>
+<tr>
+<td><strong>How do campaigns compare?</strong></td>
+<td>The Compare screen: prospects, qualify, reply and meeting rates, positive and negative share, cost, decisions with no LLM call, failed steps</td>
+</tr>
+<tr>
+<td><strong>Is this campaign working, and what should I try?</strong></td>
+<td>Campaign health: a verdict, the reasons in numbers, and a suggested change with a link to it</td>
+</tr>
+<tr>
+<td><strong>Is each agent doing its job?</strong></td>
+<td>Each agent's success rate (defined in E21), and its result split by campaign and by the prompt version it ran with</td>
+</tr>
+<tr>
+<td><strong>Did my prompt change help?</strong></td>
+<td>Each campaign-prompt version shows the share of opening messages that got a reply; the by-version table compares before and after</td>
+</tr>
+<tr>
+<td><strong>Are the criteria right?</strong></td>
+<td>The real-data tests (agreement with your own labelled people) and the golden set (16 scored cases)</td>
+</tr>
+<tr>
+<td><strong>Can a human judge the whole SDR?</strong></td>
+<td>The judge sandbox scorecard and rating</td>
+</tr>
+<tr>
+<td><strong>Why did the agent do that?</strong></td>
+<td>The Decision Journal and View prompt (the exact prompt versions rebuilt)</td>
+</tr>
+<tr>
+<td><strong>How often did the AI fail?</strong></td>
+<td>Failed workflows per campaign, decisions made by the rules because the model did not (with the reason), and the last model error</td>
+</tr>
+</tbody>
+</table>
+<p><strong>How the loop closes.</strong> A campaign is flagged as struggling because too few replies came back; the manager opens the campaign, edits the brief with a message, and saves a new version; the analytics show that version's reply rate beside the previous one; and if it is worse, one click restores the earlier version.</p>
+<p><strong>Honest about the statistics.</strong> Small samples move a lot, so the screens say so ("small sample") and the report does not claim measured accuracy from a 16-case set.</p>
+<hr />
+<h2 id="15-cost-and-performance">15. Cost and performance</h2>
+<p>The design choices are in sections 6.4 and E1 to E3; this is the summary a judge can check.</p>
+<table>
+<thead>
+<tr>
+<th>Lever</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local embeddings</td>
+<td>Retrieval and reply routing cost nothing and need no key</td>
+</tr>
+<tr>
+<td>ICP shortcut and reply router</td>
+<td>The highest-volume decisions need no model call</td>
+</tr>
+<tr>
+<td>Fast small model first, second model as fallback</td>
+<td>Lower latency and cost; quota is per model, so the demo survives a spent quota</td>
+</tr>
+<tr>
+<td>Hard daily cap and rate limit</td>
+<td>Spend and quota cannot run away</td>
+</tr>
+<tr>
+<td>Retrieval scope and top-k</td>
+<td>Small prompts; only one campaign's sources are searched</td>
+</tr>
+<tr>
+<td>Bounded dossier</td>
+<td>Context does not grow with a prospect's history</td>
+</tr>
+<tr>
+<td>Persisted usage counters</td>
+<td>The cap survives a restart</td>
+</tr>
+<tr>
+<td>Free hosting path</td>
+<td>Render free, Neon free and UptimeRobot free make a live deployment cost nothing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Performance:</strong> the scheduler is a single process that handles a small batch of prospects per campaign per tick. It is comfortable at demo scale; Section 17 says what would change at production scale (a queue and workers, and a relational schema).</p>
+<hr />
+<h2 id="16-what-works-what-is-partial-what-was-skipped">16. What works, what is partial, what was skipped</h2>
+<p>The brief asks for this distinction explicitly. We would rather a judge trust a shorter list that is true.</p>
+<h3 id="161-fully-working-verified-by-tests-by-the-live-site-or-both">16.1 Fully working (verified by tests, by the live site, or both)</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Three or more concurrent campaigns with independent Live, Paused and Draft state, dashboards, execution and analytics</td>
+<td>Live site; <code>smoke.mjs</code></td>
+</tr>
+<tr>
+<td>Pausing one campaign does not stop the others; campaign, agent and channel pause and the global kill switch each stop exactly their own scope</td>
+<td>Scheduler and lifecycle tests; smoke test</td>
+</tr>
+<tr>
+<td>Create, edit, launch, pause, resume, complete, archive and duplicate a campaign, with a launch review</td>
+<td>UI; campaign tests</td>
+</tr>
+<tr>
+<td>The autonomous loop: discovery, research, ICP fitment, strategy, personalisation, approval, conversation, follow-up, each in its own error boundary</td>
+<td>Scheduler tests; live site</td>
+</tr>
+<tr>
+<td>Per-campaign knowledge with local embeddings, retrieval before decisions, and the retrieved sources in the journal</td>
+<td>Retrieval tests; Decision Journal</td>
+</tr>
+<tr>
+<td>Prompt versioning with messages, diff, compare, activate, roll back, pins and overrides; the version recorded on every decision; the prompt inspector</td>
+<td>Prompt tests; UI</td>
+</tr>
+<tr>
+<td>Approval levels (Manual, Assisted, Autonomous), meeting-time approval, escalation that always needs a human</td>
+<td>Scheduler and campaign tests</td>
+</tr>
+<tr>
+<td>Conflict handling (14-day rule, frequency cap, suppression list), hard limits, representatives with offboarding and reassignment</td>
+<td>Conflict, limits and reps tests</td>
+</tr>
+<tr>
+<td>The grounding check with one rewrite and a hard block on auto-send</td>
+<td>Grounding tests</td>
+</tr>
+<tr>
+<td>The reply router (opt-out, hostile, out-of-office without an LLM)</td>
+<td>Router tests</td>
+</tr>
+<tr>
+<td>Meeting scheduling: real times in the rep's hours, reading the answer, no double-booking, a calendar invite</td>
+<td>Meetings tests; judge sandbox</td>
+</tr>
+<tr>
+<td>The judge sandbox, search playground, real-data tests, runtime view, real contacts and the real-email panel</td>
+<td>Dev tests; UI</td>
+</tr>
+<tr>
+<td>The AI Efficiency panel, the Compare screen, campaign health and per-agent success by prompt version</td>
+<td>Analytics tests; UI</td>
+</tr>
+<tr>
+<td><strong>Real email sending through the Gmail API</strong>, with human approval, an allow-list, truthful delivery status and a professional format</td>
+<td>A real test email reached a real inbox; the sending path is covered against a fake Gmail</td>
+</tr>
+<tr>
+<td>Sign-in, storage in JSON or Postgres with additive migrations and backups, one-service deployment on a live URL</td>
+<td>Deployed site; storage tests</td>
+</tr>
+<tr>
+<td>Model-outage behaviour: hold instead of reject, no invented people, every fallback recorded with its reason</td>
+<td>Model-outage tests</td>
+</tr>
+</tbody>
+</table>
+<h3 id="162-partial">16.2 Partial</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>What exists</th>
+<th>What is missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DronaHQ agents in the decision path</strong></td>
+<td>The agents are built and tested on the platform; the adapter is complete and tested against a fake webhook</td>
+<td>The platform's webhook returned no agent output to our backend (section 7.4), so decisions run on Gemini with the rule engine as fallback</td>
+</tr>
+<tr>
+<td><strong>Lead discovery</strong></td>
+<td>Hand-entered real contacts, and an AI-imitated people search for simulated campaigns</td>
+<td>Apollo or an equivalent live data provider</td>
+</tr>
+<tr>
+<td><strong>Real email: the reply loop</strong></td>
+<td>Sending is proven live. Reading replies, threading, bounce and auto-reply detection and approved replies are covered against a fake Gmail</td>
+<td>An end-to-end reply exchange against live Gmail has not been recorded in the test suite</td>
+</tr>
+<tr>
+<td><strong>SMS</strong></td>
+<td>Twilio send and a signed reply webhook, tested against a fake Twilio</td>
+<td>Not run against live Twilio</td>
+</tr>
+<tr>
+<td><strong>Voice SDR</strong></td>
+<td>The full turn-by-turn loop, opt-out handling and the human hand-off, tested against fakes</td>
+<td>Not run on a live phone call; needs Twilio and a public URL</td>
+</tr>
+<tr>
+<td><strong>LinkedIn</strong></td>
+<td>Planned, approved and recorded</td>
+<td>No sending; it is simulated by design</td>
+</tr>
+<tr>
+<td><strong>Meetings</strong></td>
+<td>Real times, a read answer, a booked slot and a calendar invite file</td>
+<td>Reading the rep's real free and busy time, and writing to a live calendar. The only busy time known is the meetings the SDR booked itself</td>
+</tr>
+<tr>
+<td><strong>The clock</strong></td>
+<td>Hard limits work on a simulated clock (a day lasts 72 seconds by default)</td>
+<td>Real-time operation is one setting away but is not what the demo runs on</td>
+</tr>
+<tr>
+<td><strong>Knowledge coverage</strong></td>
+<td>Product, case studies, playbooks, objection guides and canonical replies</td>
+<td>Separate example-email and voice-script documents</td>
+</tr>
+<tr>
+<td><strong>Prompt change control</strong></td>
+<td>Attributed, versioned, revertable commits with messages</td>
+<td>An approval gate before a prompt change goes live</td>
+</tr>
+<tr>
+<td><strong>Embeddings on the free host</strong></td>
+<td>Run fully in development and on hosts with memory</td>
+<td>On the smallest free host the model can be switched off to fit memory, in which case retrieval falls back to keyword search and reply routing is not used</td>
+</tr>
+</tbody>
+</table>
+<h3 id="163-skipped-on-purpose">16.3 Skipped, on purpose</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CRM sync (Salesforce, HubSpot, Sheets)</td>
+<td>The Decision Journal and prospect records are the system of record; sync is a clean adapter on the roadmap</td>
+</tr>
+<tr>
+<td>MCP and tool calling</td>
+<td>Actions are performed by the orchestrator around the model, which keeps every action gated and auditable</td>
+</tr>
+<tr>
+<td>A2A or an agent framework</td>
+<td>The scheduler plus the shared dossier does the coordination in a way that can be inspected</td>
+</tr>
+<tr>
+<td>LLM-as-judge evaluation</td>
+<td>Human evaluation (the sandbox) and a golden set were higher value in 51 hours; on the roadmap</td>
+</tr>
+<tr>
+<td>Fine-tuning</td>
+<td>Not demonstrably worth it at this scale</td>
+</tr>
+<tr>
+<td>A decision cache</td>
+<td>Roadmap; embedding vectors are cached</td>
+</tr>
+<tr>
+<td>Individual accounts and roles</td>
+<td>A shared access code with a display name was enough for the demo; on the roadmap</td>
+</tr>
+<tr>
+<td>A relational schema and a job queue</td>
+<td>One state document was chosen for speed under the 51-hour clock (section 17)</td>
+</tr>
+<tr>
+<td>Unsubscribe links</td>
+<td>A reply of "unsubscribe" or "stop" works, and a <code>List-Unsubscribe</code> header is sent</td>
+</tr>
+<tr>
+<td>Per-recipient time zones</td>
+<td>Meeting times are in one configured time zone</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="17-known-limitations-and-trade-offs">17. Known limitations and trade-offs</h2>
+<p>Every item below was a conscious choice under the 51-hour clock.</p>
+<table>
+<thead>
+<tr>
+<th>Limitation</th>
+<th>Why we accepted it</th>
+<th>What we would do next</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>State is one JSON document</strong> (a file locally, one row in Neon)</td>
+<td>Fastest path to a complete, deployable system; every feature could change the model without a migration</td>
+<td>A relational schema with pgvector for embeddings; the additive-migration rule already protects data meanwhile</td>
+</tr>
+<tr>
+<td><strong>A single scheduler process</strong></td>
+<td>Simple, deterministic, easy to explain and test</td>
+<td>A job queue with workers, and per-campaign leases</td>
+</tr>
+<tr>
+<td><strong>Retrieval is in-process, not a vector database</strong></td>
+<td>Free, fast at a few hundred chunks, one fewer service</td>
+<td>pgvector on the existing Neon database when the corpus grows</td>
+</tr>
+<tr>
+<td><strong>Embeddings can be off on the smallest free host</strong></td>
+<td>The free tier's memory is small</td>
+<td>A larger instance, or a hosted embedding endpoint</td>
+</tr>
+<tr>
+<td><strong>The matching service is not called by the running app</strong></td>
+<td>Its logic was re-implemented inside the Node backend to keep one deployment and avoid cross-service latency</td>
+<td>Extract it again as a service if a second consumer appears; it is kept as tested reference</td>
+</tr>
+<tr>
+<td><strong>Simulated prospects and replies in simulated campaigns</strong></td>
+<td>No data provider and no budget; the imitated search still exercises every path</td>
+<td>Apollo behind the same candidate shape</td>
+</tr>
+<tr>
+<td><strong>Imitated data is unverified</strong></td>
+<td>It is a model's imagination (or, for public figures, its recollection)</td>
+<td>Real providers only for real campaigns; they are already separate</td>
+</tr>
+<tr>
+<td><strong>A shared access code, not accounts</strong></td>
+<td>Enough to protect a public demo and to record who acted</td>
+<td>Individual accounts, roles and an audit log</td>
+</tr>
+<tr>
+<td><strong>Library prompts are shared, campaigns are pinned</strong></td>
+<td>Publishing a library version must never change a running campaign, so campaigns pin their version</td>
+<td>An approval gate for library changes</td>
+</tr>
+<tr>
+<td><strong>Free-tier Gemini and free hosting</strong></td>
+<td>Zero cost</td>
+<td>A paid key and a paid instance; the cap, rate limits and fallbacks are already in place</td>
+</tr>
+<tr>
+<td><strong>The Gmail refresh token expires every 7 days in "Testing" mode</strong></td>
+<td>Google's rule for unverified apps</td>
+<td>A verified app or a service-side token refresh flow</td>
+</tr>
+<tr>
+<td><strong>"Sent" means accepted by the provider</strong></td>
+<td>Delivery tracking needs provider webhooks</td>
+<td>Delivery and open tracking beyond the API's response</td>
+</tr>
+<tr>
+<td><strong>Golden-set results are on 16 scored cases labelled by us</strong></td>
+<td>It is a regression guard, not a benchmark</td>
+<td>A larger, independently labelled set and an LLM-as-judge run</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Trade-offs we would defend:</strong> a working operable subset over breadth; local embeddings over a hosted vector database; a rule-engine safety net and a visible hold over failing or guessing when the model is unavailable; human approval for every real message over more autonomy; and telling the truth about what is simulated over a smoother demo.</p>
+<hr />
+<h2 id="18-how-a-judge-can-verify-every-claim">18. How a judge can verify every claim</h2>
+<p>The brief says a working deployed link and a clean repository are how judges verify everything the report claims. This is a route through both.</p>
+<h3 id="181-on-the-live-site">18.1 On the live site</h3>
+<p>Open <strong>https://drona-hq-buildathon.onrender.com/</strong> (it may take up to a minute to wake).</p>
+<ol>
+<li><strong>Command Center.</strong> Three campaigns are Live, each with a different audience. Note the portfolio funnel, the KPIs and the <strong>AI Efficiency</strong> panel.</li>
+<li><strong>Pause one campaign</strong> from its card. Its numbers stop moving; the other two keep moving. Resume it.</li>
+<li><strong>Open a campaign.</strong> See the status, funnel, activity, the <strong>SDR Blueprint</strong>, prompts and harness, agents, reps and knowledge. Try <strong>Launch review</strong> on a draft.</li>
+<li><strong>Open a prospect.</strong> See the dossier, the plan, the conversation and the <strong>hand-off notes</strong>. Click <strong>View prompt</strong> on a note to see the exact prompt versions that agent ran with.</li>
+<li><strong>Approvals.</strong> Open a draft, read the recommendation and the grounding result. Approve one, or reject one and note that it asks for a reason.</li>
+<li><strong>Decision Journal.</strong> Open a decision: the agent, prompt version, evidence, retrieved sources and engine.</li>
+<li><strong>Agents and Prompts.</strong> Open an agent: its role, its fixed instruction, its versions; compare two; assemble a prompt for a campaign.</li>
+<li><strong>Knowledge.</strong> See the library; test retrieval with a question.</li>
+<li><strong>Compare.</strong> See campaigns side by side, campaign health, and each agent's success by prompt version.</li>
+<li><strong>Dev, Judge sandbox.</strong> Create a run (your own name works), press <strong>Run the SDR</strong>, then reply as the prospect. Ask for a time, then pick one. See the meeting, download the invite and read the scorecard.</li>
+<li><strong>Dev, Real email and Runtime.</strong> See what is really connected and what the last model error was.</li>
+<li><strong>Settings.</strong> Try the channel and agent switches and read the suppression list. The <strong>kill switch</strong> is in the top bar.</li>
+</ol>
+<h3 id="182-in-the-repository">18.2 In the repository</h3>
+<pre><code>git clone https://github.com/sinanvk314/Drona-HQ-Buildathon
+cd Drona-HQ-Buildathon/backend &amp;&amp; npm install &amp;&amp; npm test        # 187 tests, offline
+node scripts/smoke.mjs https://drona-hq-buildathon.onrender.com/ 40   # the pause-isolation demonstration
+node scripts/eval-icp.mjs                                          # the ICP golden set (rule engine)
+</code></pre>
+<p>Read, in this order: <code>README.md</code>, <code>docs/SYSTEM_GUIDE.md</code>, <code>backend/src/services/sdrSteps.js</code> (the pipeline), <code>scheduler.js</code> (the loop and its gates), <code>agentEngine/index.js</code> (the chain), <code>grounding.js</code>, <code>channels/dispatch.js</code>, <code>test/</code>.</p>
+<h3 id="183-an-index-from-claims-to-evidence">18.3 An index from claims to evidence</h3>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Where to see it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Independent campaigns, pause isolation</td>
+<td>Live site; <code>scripts/smoke.mjs</code>; <code>test/scheduler.test.js</code></td>
+</tr>
+<tr>
+<td>Matching versus judgment; no-LLM decisions</td>
+<td><code>services/agentEngine/index.js</code> (shortcut); <code>replyRouter.js</code>; <code>rag.js</code></td>
+</tr>
+<tr>
+<td>Grounding</td>
+<td><code>services/grounding.js</code>; <code>test/grounding.test.js</code></td>
+</tr>
+<tr>
+<td>Prompt versions and the inspector</td>
+<td><code>services/prompts.js</code>, <code>data.js</code> (<code>inspectPrompt</code>); <code>test/prompts.test.js</code></td>
+</tr>
+<tr>
+<td>Cost controls and usage</td>
+<td><code>services/usage.js</code>; <code>test/costControl.test.js</code></td>
+</tr>
+<tr>
+<td>Meetings</td>
+<td><code>services/meetings.js</code>; <code>test/meetings.test.js</code></td>
+</tr>
+<tr>
+<td>Real email</td>
+<td><code>services/channels/gmail.js</code>, <code>dispatch.js</code>; <code>test/real.test.js</code></td>
+</tr>
+<tr>
+<td>Voice SDR</td>
+<td><code>services/channels/voice.js</code>; <code>test/real.test.js</code></td>
+</tr>
+<tr>
+<td>Model-outage policy</td>
+<td><code>services/scheduler.js</code>; <code>test/llmdown.test.js</code></td>
+</tr>
+<tr>
+<td>Analytics by prompt version</td>
+<td><code>services/performance.js</code>; <code>test/performance.test.js</code></td>
+</tr>
+<tr>
+<td>DronaHQ adapter</td>
+<td><code>services/agentEngine/dronahqEngine.js</code>; <code>test/dronahqEngine.test.js</code>; <code>docs/dronahq/</code></td>
+</tr>
+<tr>
+<td>Storage and migrations</td>
+<td><code>db/</code>; <code>test/storage.test.js</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="19-team-process-and-timeline">19. Team, process and timeline</h2>
+<h3 id="191-who-did-what">19.1 Who did what</h3>
+<table>
+<thead>
+<tr>
+<th>Person</th>
+<th>Focus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Shubh Gupta</strong></td>
+<td>The control-plane UI (the DronaHQ Studio application) and the first backend: the API, the scheduler that advances prospects on its own, and the campaign lifecycle</td>
+</tr>
+<tr>
+<td><strong>Mohammed Sinan</strong></td>
+<td>The intelligence layer: the matching and reply-routing logic, the agents and their prompts, retrieval, the engine chain (DronaHQ, Gemini, rules), cost control, the DronaHQ integration and its investigation, the extension of the control plane (prompt management, reps, analytics, the Dev tab), real channels (Gmail, Twilio, Voice), deployment, documentation and testing</td>
+</tr>
+<tr>
+<td><strong>A third teammate</strong></td>
+<td>Product planning and the wireframes that shaped the screens</td>
+</tr>
+</tbody>
+</table>
+<h3 id="192-how-the-build-unfolded">19.2 How the build unfolded</h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>What happened</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1. Foundations</strong></td>
+<td>The matching-versus-judgment split was decided; the shared agent output contract was written; a standalone matching service was built and tested (three endpoints, 13 tests); the control-plane UI and a first backend took shape in parallel</td>
+</tr>
+<tr>
+<td><strong>2. Integration</strong></td>
+<td>The two halves were brought together on one branch; a decision was made that the <strong>Node backend and its scheduler are the system of record</strong> (two orchestrators existed), and the matching logic was moved inside it; the DronaHQ engine was added; the agent in DronaHQ was built and tested in the Playground</td>
+</tr>
+<tr>
+<td><strong>3. The DronaHQ investigation</strong></td>
+<td>The webhook output problem was diagnosed in depth through Postman-style probes, the platform's Traces and the Structured Output tooling (section 7.4); Gemini was added as an engine so the loop did not wait on it</td>
+</tr>
+<tr>
+<td><strong>4. Hardening</strong></td>
+<td>Hard limits, representatives, approval levels, prompt versioning with pins, grounding, sign-in, conflict handling, the launch review, per-campaign agent pause; and cost control and the efficiency panel</td>
+</tr>
+<tr>
+<td><strong>5. Deployment</strong></td>
+<td>Docker, Render, Neon, UptimeRobot; additive migrations and backups after an early reseed wiped a campaign; the README and the system guide</td>
+</tr>
+<tr>
+<td><strong>6. Intelligence and realism</strong></td>
+<td>The Research agent, the SDR Blueprint and dossier, the imitated people search, one-person campaigns, meeting scheduling, the judge sandbox and the Dev tab</td>
+</tr>
+<tr>
+<td><strong>7. Measurement</strong></td>
+<td>Per-agent success by prompt version, campaign health, the knowledge library, prompt commits and the inspector, the Agents and Prompts screen</td>
+</tr>
+<tr>
+<td><strong>8. Real channels</strong></td>
+<td>Real versus simulated per campaign, real contacts, Gmail, Twilio, the Voice SDR, and the safeguards; then fixes from using it (section 8, E27)</td>
+</tr>
+<tr>
+<td><strong>9. Polish and submission</strong></td>
+<td>The interface pass, model-outage behaviour, the demo campaigns and demo script, this report</td>
+</tr>
+</tbody>
+</table>
+<h3 id="193-what-we-learned">19.3 What we learned</h3>
+<ul>
+<li><strong>Decide the seams early.</strong> The engine interface and the shared output contract let three people work in parallel and let us swap DronaHQ, Gemini and the rules without touching the screens.</li>
+<li><strong>Use the thing you built.</strong> The most valuable bugs (a reply thrown away, an approved reply never sent, emails that read like templates, everything rejected when the model was down) were found by using the system, not by reading it.</li>
+<li><strong>Make failure a first-class state.</strong> "Held, because the model did not answer" is a better product than "rejected" or "crashed".</li>
+<li><strong>Say what is simulated.</strong> The honest label cost us nothing and made everything else believable.</li>
+</ul>
+<hr />
+<h2 id="20-appendices">20. Appendices</h2>
+<h3 id="appendix-a-environment-variables-the-ones-that-matter">Appendix A. Environment variables (the ones that matter)</h3>
+<p>Every variable has a working default; <code>backend/.env.example</code> is the full annotated list.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AGENT_ENGINE</code></td>
+<td>The engine chain, for example <code>gemini</code>, <code>dronahq,gemini</code>, or <code>rule</code>; the rule engine is always last</td>
+</tr>
+<tr>
+<td><code>GEMINI_API_KEY</code>, <code>GEMINI_MODEL</code></td>
+<td>Google Gemini access and the ordered list of models</td>
+</tr>
+<tr>
+<td><code>GEMINI_RPM</code>, <code>LLM_DAILY_CALL_CAP</code></td>
+<td>The per-minute rate limit and the hard daily cap on model calls</td>
+</tr>
+<tr>
+<td><code>ICP_SHORTCUT_MARGIN</code></td>
+<td>How far below the threshold a score must be for a clear rejection without a model</td>
+</tr>
+<tr>
+<td><code>EMBEDDINGS</code>, <code>REPLY_ROUTING</code></td>
+<td>Turn local embeddings and reply routing on or off</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>Neon Postgres; if unset, a local JSON file is used</td>
+</tr>
+<tr>
+<td><code>APP_ACCESS_CODE</code>, <code>AUTH_SECRET</code></td>
+<td>Sign-in and the session-signing secret</td>
+</tr>
+<tr>
+<td><code>ALLOWED_ORIGINS</code>, <code>PORT</code></td>
+<td>CORS and the port</td>
+</tr>
+<tr>
+<td><code>SIM_MS_PER_HOUR</code>, <code>ENFORCE_LIMITS</code>, <code>SIM_REPLY_CHANCE</code></td>
+<td>The simulated clock, hard limits, and the simulated reply rate</td>
+</tr>
+<tr>
+<td><code>SCHEDULER_INTERVAL_MS</code>, <code>SCHEDULER_BATCH_SIZE</code></td>
+<td>How often the loop runs and how many prospects per campaign per tick</td>
+</tr>
+<tr>
+<td><code>MEETING_TIMEZONE</code>, <code>MEETING_MINUTES</code></td>
+<td>Meeting time zone and length</td>
+</tr>
+<tr>
+<td><code>REAL_SENDING</code>, <code>REAL_AUTO_SEND</code>, <code>REAL_SEND_ALLOWLIST</code>, <code>PUBLIC_URL</code></td>
+<td>The real-sending master switch, the human-approval override, the recipient allow-list and the public address</td>
+</tr>
+<tr>
+<td><code>GMAIL_CLIENT_ID</code>, <code>GMAIL_CLIENT_SECRET</code>, <code>GMAIL_REFRESH_TOKEN</code>, <code>GMAIL_SENDER</code>, <code>GMAIL_POLL_MS</code></td>
+<td>Gmail API credentials and the inbox polling interval</td>
+</tr>
+<tr>
+<td><code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_SMS_FROM</code>, <code>TWILIO_VOICE_FROM</code></td>
+<td>Twilio credentials and numbers</td>
+</tr>
+<tr>
+<td><code>DRONAHQ_*</code></td>
+<td>The DronaHQ webhook URLs and keys, only if the chain includes <code>dronahq</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="appendix-b-the-api-by-area-79-endpoints-plus-4-signed-webhooks">Appendix B. The API by area (79 endpoints, plus 4 signed webhooks)</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Auth</strong></td>
+<td>Sign-in configuration, login, current user</td>
+</tr>
+<tr>
+<td><strong>Campaigns</strong></td>
+<td>Create, read, update, duplicate; launch, pause, resume, complete, archive; the launch review; the blueprint; persona; reps; knowledge sources</td>
+</tr>
+<tr>
+<td><strong>Prompts and agents</strong></td>
+<td>Library agents and versions; activate a version; per-campaign pins, campaign system prompt versions, overrides; the prompt inspector</td>
+</tr>
+<tr>
+<td><strong>Prospects and approvals</strong></td>
+<td>Prospects and their detail; the approvals queue, edit, and decide; the meeting invite download</td>
+</tr>
+<tr>
+<td><strong>Journal and analytics</strong></td>
+<td>Decisions; comparison; per-agent performance and campaign health</td>
+</tr>
+<tr>
+<td><strong>Knowledge</strong></td>
+<td>The cross-campaign library, add, attach, detach, retrieval test</td>
+</tr>
+<tr>
+<td><strong>Representatives</strong></td>
+<td>List, create, update, offboard, reassign</td>
+</tr>
+<tr>
+<td><strong>Settings</strong></td>
+<td>Kill switch, agent and channel switches, the suppression list, integrations status</td>
+</tr>
+<tr>
+<td><strong>Dev</strong></td>
+<td>Sandboxes (create, run, reply, feedback, delete), search, real-data tests, real contacts, real email diagnostics, Gemini test, runtime</td>
+</tr>
+<tr>
+<td><strong>Webhooks (signed)</strong></td>
+<td>Twilio SMS replies and the three voice callbacks</td>
+</tr>
+</tbody>
+</table>
+<h3 id="appendix-c-glossary">Appendix C. Glossary</h3>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ICP</strong></td>
+<td>Ideal Customer Profile: who a campaign is aimed at</td>
+</tr>
+<tr>
+<td><strong>Matching</strong></td>
+<td>A decision about how alike two things are; settled by embeddings or rules</td>
+</tr>
+<tr>
+<td><strong>Judgment</strong></td>
+<td>A decision that needs evidence and reasoning; made by a model</td>
+</tr>
+<tr>
+<td><strong>Engine</strong></td>
+<td>Something that can decide for an agent: DronaHQ, Gemini, Anthropic or the rule engine</td>
+</tr>
+<tr>
+<td><strong>Engine chain</strong></td>
+<td>The order engines are tried in; the rule engine is always last</td>
+</tr>
+<tr>
+<td><strong>Dossier</strong></td>
+<td>The shared record of facts, reasons to reach out, gaps and hand-off notes for one prospect</td>
+</tr>
+<tr>
+<td><strong>Hand-off note</strong></td>
+<td>One or two sentences an agent writes after acting, for the next agent</td>
+</tr>
+<tr>
+<td><strong>Harness / harness label</strong></td>
+<td>The prompt versions an agent ran with, for example <code>v3.2 + campaign prompt v2</code></td>
+</tr>
+<tr>
+<td><strong>Pin</strong></td>
+<td>A campaign's fixed choice of which library prompt version each agent uses</td>
+</tr>
+<tr>
+<td><strong>Grounding check</strong></td>
+<td>A deterministic check that a draft makes no claim its sources do not support</td>
+</tr>
+<tr>
+<td><strong>Reply router</strong></td>
+<td>The embedding-based settling of clear-cut replies with no model</td>
+</tr>
+<tr>
+<td><strong>Imitated search</strong></td>
+<td>The model acting as a people-search tool to produce fictional prospects</td>
+</tr>
+<tr>
+<td><strong>Real / simulated</strong></td>
+<td>Whether a campaign's people and messages are real (entered by hand, really sent) or invented and never sent</td>
+</tr>
+<tr>
+<td><strong>Sandbox</strong></td>
+<td>A test run in which a real person plays the prospect</td>
+</tr>
+<tr>
+<td><strong>Approval level</strong></td>
+<td>Manual, Assisted or Autonomous: how much a human must approve</td>
+</tr>
+<tr>
+<td><strong>Kill switch</strong></td>
+<td>The global control that stops all autonomous external action</td>
+</tr>
+</tbody>
+</table>
+<h3 id="appendix-d-key-decisions-and-the-alternatives-we-rejected">Appendix D. Key decisions and the alternatives we rejected</h3>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Alternative</th>
+<th>Why we chose this</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Split every decision into matching and judgment</td>
+<td>Ask the model everything</td>
+<td>Cost, speed, and correctness of hard rules</td>
+</tr>
+<tr>
+<td>Local embeddings (<code>bge-small</code>)</td>
+<td>OpenAI embeddings</td>
+<td>No budget for billing; no key; works offline; fast enough</td>
+</tr>
+<tr>
+<td>The Node scheduler as the system of record</td>
+<td>Two orchestrators (Node and Python)</td>
+<td>The UI already spoke the Node API; one orchestration to explain and test</td>
+</tr>
+<tr>
+<td>Re-implement matching inside Node</td>
+<td>Call the Python service</td>
+<td>One deployment, no cross-service latency</td>
+</tr>
+<tr>
+<td>An engine chain ending in a rule engine</td>
+<td>One provider</td>
+<td>The loop never stalls; failures degrade visibly</td>
+</tr>
+<tr>
+<td>Gemini in the decision path</td>
+<td>Waiting on the DronaHQ webhook</td>
+<td>The brief prefers a working end-to-end system over one blocked on a platform behaviour</td>
+</tr>
+<tr>
+<td>A shared dossier</td>
+<td>Message passing between agents</td>
+<td>Durable, inspectable and one memory for all channels</td>
+</tr>
+<tr>
+<td>Hold, do not reject, when the model is down</td>
+<td>Fall back to rules for everything</td>
+<td>A guess that rejects a real prospect is worse than a delay</td>
+</tr>
+<tr>
+<td>A human approves every real message</td>
+<td>Trust the approval level</td>
+<td>Real people are involved; the cost of a wrong send is high</td>
+</tr>
+<tr>
+<td>An LLM imitating a people search</td>
+<td>Random name lists; waiting for Apollo</td>
+<td>Realistic, campaign-specific data at no integration cost, behind a drop-in shape</td>
+</tr>
+<tr>
+<td>One state document</td>
+<td>A relational schema</td>
+<td>Speed under a 51-hour clock; additive migrations protect the data</td>
+</tr>
+<tr>
+<td>An audit trail for prompt changes</td>
+<td>An approval gate</td>
+<td>Faster iteration with full accountability; a gate is on the roadmap</td>
+</tr>
+</tbody>
+</table></body></html>
