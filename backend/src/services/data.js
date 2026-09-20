@@ -10,6 +10,8 @@ import { STAGE_KEYS, STAGE_LABELS, CARD_CHANNEL_LABELS } from "./constants.js";
 import { validateCampaign, validateSuppression } from "../utils/validation.js";
 import { shortDate } from "../utils/format.js";
 import { checkConflict } from "./conflict.js";
+import { getUsage } from "./usage.js";
+import { docLength } from "./rag.js";
 
 function campaignOf(s, id) {
   const c = s.campaigns.find((x) => x.id === id);
@@ -38,6 +40,11 @@ function cardOf(s, c) {
     action: cardActionOf(c),
     locked: eff === "stopped",
   };
+}
+
+// What the UI needs to list a knowledge source. The text itself is never sent back, only its size.
+function sourceView(x) {
+  return { id: x.id, name: x.name, category: x.category, chars: x.content ? x.content.length : x.docId ? docLength(x.docId) : 0, custom: !!x.content };
 }
 
 function prospectRow(s, p) {
@@ -94,6 +101,7 @@ export function getCommandCenter() {
       { label: "Active Campaigns", value: live + paused, sub: s.killSwitch.active ? "Kill Switch active" : activeSub.join(" · "), tone: "neutral", dot: !s.killSwitch.active },
     ],
     approvals: { count: pending.length, escalated: pending.filter((a) => a.type === "escalation").length },
+    efficiency: getUsage(),
     campaigns: cs.map((c) => cardOf(s, c)),
     funnel: STAGE_KEYS.map((k) => ({ key: k, label: STAGE_LABELS[k], value: sum(k) })),
     feed: s.events
@@ -123,6 +131,8 @@ export function getCampaign(id) {
     timeline: draft ? [] : s.events.filter((e) => e.campaignId === id).sort((a, b) => b.ts - a.ts).slice(0, 4).map((e) => ({ id: e.id, type: e.type, text: e.text, ts: e.ts })),
     outreach: o,
     approvals: { count: pending.length, items: pending.slice(0, 2).map(approvalQueueItem) },
+    approvalPolicy: { ...c.approvals },
+    knowledge: c.sources.map(sourceView),
     prospects: draft ? [] : s.prospects.filter((p) => p.campaignId === id).map((p) => prospectRow(s, p)),
   };
 }
@@ -136,7 +146,7 @@ export function getCampaignDefaults() {
     geography: c.geography, personaOptions: ["Founder", "CEO", "Head of Product", "CTO", "VP Engineering", "CIO", "Head of Risk"],
     personas: c.personas, companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: c.channels,
     qualificationPrompt: c.qualificationPrompt, dailyLimit: c.dailyLimit, workingHours: c.workingHours,
-    approvals: { ...c.approvals }, sources: c.sources.map((x) => ({ ...x })),
+    approvals: { ...c.approvals, level: "manual" }, sources: c.sources.map((x) => ({ ...x })),
   };
 }
 
@@ -257,6 +267,71 @@ export function archiveCampaign(id) {
   return withState((s) => transition(s, id, "archived", null));
 }
 
+const APPROVAL_LEVELS = ["manual", "assisted", "autonomous"];
+
+// Approval policy per campaign: which actions need a human (three toggles) and how a human can be
+// skipped (level; see scheduler.js autoApproval). Anything missing or out of range gets the safe default.
+function normalizeApprovals(a = {}) {
+  const clamp = (v, lo, hi, dflt) => (Number.isFinite(Number(v)) && v !== "" && v !== null ? Math.min(hi, Math.max(lo, Math.round(Number(v)))) : dflt);
+  return {
+    firstOutreach: a.firstOutreach !== false,
+    meetingTime: !!a.meetingTime,
+    escalate: a.escalate !== false,
+    level: APPROVAL_LEVELS.includes(a.level) ? a.level : "manual",
+    autoMinScore: clamp(a.autoMinScore, 50, 100, 85),
+    autoAfterApproved: clamp(a.autoAfterApproved, 0, 50, 3),
+  };
+}
+
+const MAX_SOURCE_CHARS = 60000;
+
+function makeSource(s, { name, category, content }) {
+  const errors = {};
+  if (!name || name.trim().length < 3) errors.name = "Enter a source name (at least 3 characters).";
+  if (!content || content.trim().length < 20) errors.content = "Paste or upload the source text (at least 20 characters).";
+  else if (content.length > MAX_SOURCE_CHARS) errors.content = `That is too long (max ${MAX_SOURCE_CHARS.toLocaleString()} characters).`;
+  if (Object.keys(errors).length) {
+    const err = new Error("Please fix the highlighted fields.");
+    err.fields = errors;
+    throw err;
+  }
+  s.seq += 1;
+  return { id: `s${s.seq}`, name: name.trim(), category: category || "Other", content: content.trim() };
+}
+
+// Sources arriving with a new campaign: either a reference to a shipped document (docId) or text typed or
+// uploaded in the UI (content). Shape and size are enforced here, not trusted from the client.
+function normalizeSources(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 30).map((x, i) => ({
+    id: String(x.id || `s_new_${i}`),
+    name: String(x.name || "Untitled source").slice(0, 200),
+    category: String(x.category || "Other").slice(0, 60),
+    ...(typeof x.docId === "string" && /^[\w.-]+$/.test(x.docId) ? { docId: x.docId } : {}),
+    ...(typeof x.content === "string" && x.content.trim() ? { content: x.content.trim().slice(0, MAX_SOURCE_CHARS) } : {}),
+  }));
+}
+
+export function addCampaignSource(campaignId, values = {}) {
+  return withState((s) => {
+    const c = campaignOf(s, campaignId);
+    const source = makeSource(s, values);
+    c.sources.push(source);
+    c.modifiedTs = Date.now();
+    return sourceView(source);
+  });
+}
+
+export function removeCampaignSource(campaignId, sourceId) {
+  return withState((s) => {
+    const c = campaignOf(s, campaignId);
+    const before = c.sources.length;
+    c.sources = c.sources.filter((x) => x.id !== sourceId);
+    if (c.sources.length === before) throw new Error("Knowledge source not found.");
+    c.modifiedTs = Date.now();
+    return { id: sourceId };
+  });
+}
+
 export function createCampaign(values, { launch = false } = {}) {
   return withState((s) => {
     const errors = validateCampaign(values, launch);
@@ -277,7 +352,7 @@ export function createCampaign(values, { launch = false } = {}) {
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
       qualificationPrompt: (values.qualificationPrompt || "").trim(), dailyLimit: Number(values.dailyLimit) || 0,
-      workingHours: values.workingHours || "", approvals: { ...(values.approvals || {}) }, sources: values.sources || [],
+      workingHours: values.workingHours || "", approvals: normalizeApprovals(values.approvals), sources: normalizeSources(values.sources),
       funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
@@ -315,6 +390,10 @@ export function decideApproval(id, { action, reason = "" } = {}) {
     if (p) {
       if (action === "approve") {
         const o = OUTCOMES[a.type];
+        // The approved (possibly edited) draft is what actually goes out, so keep it in the conversation.
+        if ((a.type === "first" || a.type === "followup") && a.draft && a.draft.body) {
+          p.conversation.push({ dir: "out", text: a.draft.body, when: "Today" });
+        }
         p.lastAction = o.last;
         p.nextStep = o.next;
         if (o.stage) p.stage = o.stage;

@@ -5,6 +5,8 @@ import { router } from "./routes/index.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
 import { startScheduler } from "./services/scheduler.js";
 import { initDb } from "./db/index.js";
+import { getUsage } from "./services/usage.js";
+import { embeddingsStatus } from "./services/embeddings.js";
 
 const app = express();
 
@@ -25,6 +27,8 @@ app.get("/health", (req, res) =>
     ...(isDronahqMode() ? { dronahqWebhooksConfigured: dronahqStatus() } : {}),
     ...(isGeminiMode() ? { geminiKeyConfigured: !!config.gemini.apiKey, geminiModel: config.gemini.model } : {}),
     schedulerIntervalMs: config.schedulerIntervalMs,
+    embeddings: embeddingsStatus(),
+    llmUsageToday: (({ llmCalls, dailyCap, capReached, avoidedTotal }) => ({ llmCalls, dailyCap, capReached, decisionsWithoutLlm: avoidedTotal }))(getUsage()),
   })
 );
 

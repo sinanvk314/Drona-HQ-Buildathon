@@ -63,6 +63,21 @@ export const config = {
   modelSmart: process.env.AGENT_MODEL_SMART || "claude-sonnet-4-5",
   schedulerIntervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 12000,
   schedulerBatchSize: Number(process.env.SCHEDULER_BATCH_SIZE) || 3,
+  // Cost control. Every LLM call is counted per day (data/usage.json). Past LLM_DAILY_CALL_CAP the
+  // chain skips LLM engines and the rule engine decides, so a demo can never burn the free quota
+  // dry. 0 disables the cap.
+  llmDailyCallCap: process.env.LLM_DAILY_CALL_CAP !== undefined ? Number(process.env.LLM_DAILY_CALL_CAP) : 300,
+  // Clear-cut ICP REJECTIONS skip the LLM: the rule engine's score is at least this far below the campaign
+  // threshold (or a hard exclusion fired). Qualifications always go to the LLM. 0 turns the shortcut off.
+  icpShortcutMargin: process.env.ICP_SHORTCUT_MARGIN !== undefined ? Number(process.env.ICP_SHORTCUT_MARGIN) : 20,
+  // Embedding routing of clean-cut replies (unsubscribe / hostile / out-of-office) with no LLM call.
+  replyRouting: {
+    enabled: (process.env.REPLY_ROUTING || "on").toLowerCase() !== "off",
+    minScore: Number(process.env.REPLY_MIN_SCORE) || 0.80,
+    minMargin: Number(process.env.REPLY_MIN_MARGIN) || 0.05,
+  },
+  // Rough $ per LLM call, only used for the "cost saved" figure on the dashboard.
+  estCostPerLlmCall: Number(process.env.EST_COST_PER_LLM_CALL) || 0.0015,
 };
 
 /** The engines to try, in order, from AGENT_ENGINE ("dronahq,gemini" -> ["dronahq", "gemini"]). */

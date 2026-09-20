@@ -2,18 +2,38 @@
 // the state the 8 wireframes/screens were built against. `sources[].docId` is new: it points
 // at a real text file under data/knowledge/ so the RAG service has real content to retrieve
 // (the frontend mock only ever needed the file *name* for display).
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2; // 2: per-campaign knowledge sources, approval levels
 
 export function buildSeed(now) {
   const m = (n) => now - n * 60 * 1000;
   const hrs = (n) => now - n * 60 * 60 * 1000;
   const days = (n) => now - n * 24 * 60 * 60 * 1000;
 
-  const sources = () => [
-    { id: "s1", name: "NimbusGuard — Product One-Pager.pdf", category: "Product info", docId: "product-one-pager" },
-    { id: "s2", name: "Case Study — Infra Cost Savings at Scale.pdf", category: "Case study", docId: "case-study-fleetwise" },
-    { id: "s3", name: "Objection Handling Playbook — Founders.pdf", category: "Objections", docId: "objection-handling" },
-  ];
+  // Knowledge sources are per campaign: each points (docId) at a text file in data/knowledge/ that the
+  // RAG service embeds and searches, but only for that campaign. Shared docs (the product one-pager)
+  // appear in several; the playbooks, case studies and objection guides are specific to one audience.
+  const doc = (id, name, category, docId) => ({ id, name, category, docId });
+  const productDoc = () => doc("s1", "NimbusGuard — Product One-Pager.pdf", "Product info", "product-one-pager");
+  const sourcesFor = {
+    saas: () => [
+      productDoc(),
+      doc("s2", "Case Study — Fleetwise: Infra Cost Savings at Scale.pdf", "Case study", "case-study-fleetwise"),
+      doc("s3", "Objection Handling Playbook.pdf", "Objections", "objection-handling"),
+      doc("s4", "Sales Playbook — US SaaS CTO Outreach.pdf", "Playbook & examples", "playbook-saas-cto"),
+    ],
+    bfsi: () => [
+      productDoc(),
+      doc("s5", "Case Study — Kaveri Finserv: Visibility Without Moving Data.pdf", "Case study", "case-study-bfsi"),
+      doc("s6", "Objection Handling — Regulated BFSI (India).pdf", "Objections", "objection-handling-bfsi"),
+      doc("s7", "Sales Playbook — India BFSI CIO Outreach.pdf", "Playbook & examples", "playbook-bfsi-cio"),
+    ],
+    founders: () => [
+      productDoc(),
+      doc("s8", "Case Study — Voxwell: Inference Cost for Voice AI.pdf", "Case study", "case-study-voice-ai"),
+      doc("s9", "Objection Handling — Startup Founders.pdf", "Objections", "objection-handling-founders"),
+      doc("s10", "Sales Playbook — AI Startup Founders.pdf", "Playbook & examples", "playbook-ai-founders"),
+    ],
+  };
 
   const campaigns = [
     {
@@ -36,8 +56,8 @@ export function buildSeed(now) {
         "Qualify if the company is hiring cloud-cost or platform roles OR has raised in the last 12 months, and the contact is a CTO or VP Engineering. Qualify at 70 or above.",
       dailyLimit: 60,
       workingHours: "9:00 AM – 6:00 PM, prospect local time",
-      approvals: { firstOutreach: true, meetingTime: false, escalate: true },
-      sources: sources(),
+      approvals: { firstOutreach: true, meetingTime: false, escalate: true, level: "assisted", autoMinScore: 85, autoAfterApproved: 3 },
+      sources: sourcesFor.saas(),
       funnel: { discovered: 1840, researched: 1620, qualified: 780, contacted: 426, engaged: 210, meeting: 18, opportunity: 7 },
       outreach: { emails: 340, linkedin: 86, replies: 54, followups: 112, costPerQualified: 0.62 },
       responseRate: 18.2,
@@ -63,8 +83,8 @@ export function buildSeed(now) {
       qualificationPrompt: "Qualify if the entity is RBI-regulated and the contact owns technology or risk decisions. Qualify at 70 or above.",
       dailyLimit: 30,
       workingHours: "10:00 AM – 6:00 PM IST",
-      approvals: { firstOutreach: true, meetingTime: true, escalate: true },
-      sources: sources().slice(0, 2),
+      approvals: { firstOutreach: true, meetingTime: true, escalate: true, level: "manual", autoMinScore: 85, autoAfterApproved: 3 },
+      sources: sourcesFor.bfsi(),
       funnel: { discovered: 980, researched: 860, qualified: 330, contacted: 211, engaged: 96, meeting: 11, opportunity: 4 },
       outreach: { emails: 190, linkedin: 0, replies: 29, followups: 64, costPerQualified: 0.81 },
       responseRate: 13.7,
@@ -91,8 +111,8 @@ export function buildSeed(now) {
         "Qualify if company is actively hiring infra/platform roles OR has raised a round in the last 6 months, and the contact's title matches Founder/CEO. Qualify at 70 or above.",
       dailyLimit: 40,
       workingHours: "9:00 AM – 6:00 PM, prospect local time",
-      approvals: { firstOutreach: true, meetingTime: false, escalate: true },
-      sources: sources(),
+      approvals: { firstOutreach: true, meetingTime: false, escalate: true, level: "autonomous", autoMinScore: 85, autoAfterApproved: 3 },
+      sources: sourcesFor.founders(),
       funnel: { discovered: 640, researched: 560, qualified: 220, contacted: 142, engaged: 79, meeting: 9, opportunity: 3 },
       outreach: { emails: 120, linkedin: 0, replies: 21, followups: 41, costPerQualified: 0.74 },
       responseRate: 14.8,

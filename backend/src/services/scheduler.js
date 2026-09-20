@@ -9,6 +9,9 @@ import { config } from "../config.js";
 import { checkConflict } from "./conflict.js";
 import { generateProspect } from "./prospectGenerator.js";
 import * as engine from "./agentEngine/index.js";
+import { classifyReply } from "./replyRouter.js";
+import { recordAvoided } from "./usage.js";
+import { shortDate } from "../utils/format.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
 const agentEnabled = (s, id) => !s.killSwitch.active && !!agentById(s, id)?.enabled;
@@ -60,6 +63,27 @@ async function runLeadResearch(s, campaign) {
   }
 }
 
+// Approval levels (per campaign, PS "human-approval rules"). The three toggles say which actions
+// need a human; the level says when a human can be skipped:
+//   manual      every toggled action waits in the Approvals queue (default)
+//   assisted    first outreach / meeting auto-approve once the campaign has earned trust: at least
+//               `autoAfterApproved` human approvals of that action type AND a fit score >= `autoMinScore`
+//   autonomous  first outreach and meetings never wait for a human
+// Escalations (an objection that needs a compliance-accurate answer) always go to a human at every level.
+function autoApproval(s, campaign, prospect, type) {
+  const ap = campaign.approvals || {};
+  if (ap.level === "autonomous") return { ok: true, why: "Autonomous approval level" };
+  if (ap.level === "assisted") {
+    const minScore = ap.autoMinScore ?? 85;
+    const needed = ap.autoAfterApproved ?? 3;
+    const human = s.approvals.filter((a) => a.campaignId === campaign.id && a.type === type && a.status === "approved").length;
+    if ((prospect.fit ?? 0) >= minScore && human >= needed) {
+      return { ok: true, why: `Assisted level: fit ${prospect.fit} >= ${minScore} and ${human} earlier human approvals of this action` };
+    }
+  }
+  return { ok: false };
+}
+
 async function runIcpFitment(s, campaign) {
   if (!agentEnabled(s, "icp")) return;
   const icpAgent = agentById(s, "icp");
@@ -91,6 +115,7 @@ async function runIcpFitment(s, campaign) {
         prospectId: prospect.id,
         agent: "ICP Fitment Agent",
         harness: result.harness,
+        engine: result.engine,
         headline: `${result.qualified ? "Qualified" : "Rejected"} — ${prospect.name}, ${prospect.company}`,
         summary: `ICP Fitment Agent ${result.qualified ? "qualified" : "rejected"} **${prospect.name}**, ${prospect.company}${result.qualified ? ` (score ${result.score}/100)` : ""}`,
         evidence: result.evidence,
@@ -114,7 +139,7 @@ async function runPersonalisation(s, campaign) {
   if (!activeChannels.length) return;
   const personalisationAgent = agentById(s, "personalisation");
   const batch = s.prospects
-    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval")
+    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval" && p.nextStep !== "See Decision Journal")
     .slice(0, config.schedulerBatchSize);
 
   for (const prospect of batch) {
@@ -148,6 +173,7 @@ async function runPersonalisation(s, campaign) {
         prospectId: prospect.id,
         agent: "Personalisation & Outreach Strategy Agent",
         harness: result.harness,
+        engine: result.engine,
         headline: `Channel chosen — ${prospect.name}, ${prospect.company}`,
         summary: `Personalisation Agent chose ${result.channel} for **${prospect.name}**, ${prospect.company}`,
         evidence: [result.reasoning],
@@ -156,7 +182,8 @@ async function runPersonalisation(s, campaign) {
         finalAction: `Draft ${result.channel} message`,
       });
 
-      if (campaign.approvals.firstOutreach) {
+      const auto = campaign.approvals.firstOutreach ? autoApproval(s, campaign, prospect, "first") : { ok: true, why: "Approval not required for this campaign" };
+      if (!auto.ok) {
         pushApproval(s, {
           type: "first",
           prospectId: prospect.id,
@@ -181,14 +208,83 @@ async function runPersonalisation(s, campaign) {
         prospect.lastAction = `Opening ${result.channel} sent, {ago}`;
         prospect.nextStep = "Awaiting reply";
         campaign.funnel.contacted += 1;
-        campaign.outreach[result.channel === "email" || result.channel === "sms" ? (result.channel === "email" ? "emails" : "linkedin") : "linkedin"] =
-          (campaign.outreach.emails || 0) + 1;
+        campaign.outreach[result.channel === "email" ? "emails" : "linkedin"] += 1;
+        if (campaign.approvals.firstOutreach) {
+          pushDecision(s, {
+            kind: "strategy",
+            campaignId: campaign.id,
+            prospectId: prospect.id,
+            agent: "Approval Policy",
+            harness: result.harness,
+            engine: "auto-approval",
+            headline: `Auto-approved and sent — ${prospect.name}, ${prospect.company}`,
+            summary: `First ${result.channel} to **${prospect.name}**, ${prospect.company} was auto-approved (${auto.why})`,
+            evidence: [auto.why, `Campaign approval level: ${campaign.approvals.level || "manual"}`],
+            instruction: "Escalations always need a human; first outreach may skip the queue only at the Assisted or Autonomous approval level.",
+            finalAction: `Send the ${result.channel} message without waiting in the Approvals queue`,
+          });
+        }
       }
       prospect.lastTs = Date.now();
     } catch (e) {
       console.warn(`[scheduler] Personalisation failed for ${prospect.id}:`, e.message);
     }
   }
+}
+
+// Stand-in for real inbound mail until a mailbox integration exists: a mix of clean-cut replies
+// (opt-out, hostile, out-of-office) and ones that need judgment (objection, question, interest).
+const REPLIES = [
+  { weight: 0.07, kind: "opt-out request", texts: ["Please remove me from your list.", "Not interested, unsubscribe me from these emails.", "Take me off this mailing list, thanks."] },
+  { weight: 0.04, kind: "out-of-office auto-reply", texts: ["I am out of the office until next Monday with limited access to email.", "Automatic reply: I am on annual leave and will respond when I return."] },
+  { weight: 0.03, kind: "hostile reply", texts: ["Stop spamming me. This is unsolicited and I will report it.", "How did you get my details? Never contact me again."] },
+  { weight: 0.24, kind: "security / compliance objection", texts: ["Before we go further, can you share your SOC 2 report and where data is stored?"] },
+  { weight: 0.31, kind: "interested — wants a call", texts: ["Interesting, could we do a quick call this week?"] },
+  { weight: 0.31, kind: "asked about pricing", texts: ["Thanks for reaching out, tell me more about pricing."] },
+];
+
+function simulateReply() {
+  let r = Math.random();
+  const pick = REPLIES.find((x) => (r -= x.weight) < 0) || REPLIES[REPLIES.length - 1];
+  return { text: pick.texts[Math.floor(Math.random() * pick.texts.length)], kind: pick.kind };
+}
+
+// A reply the embedding router settled by itself: opt-outs and hostile replies suppress the
+// contact everywhere (the global do-not-contact list every campaign checks); out-of-office just waits.
+function applyRoutedReply(s, campaign, prospect, routed) {
+  const optOut = routed.category === "unsubscribe" || routed.category === "hostile";
+  recordAvoided("replyRouting");
+  prospect.history.push({ kind: "email", text: optOut ? `Reply received — opt-out (${routed.category})` : "Out-of-office auto-reply received", when: "Today" });
+
+  if (optOut) {
+    s.seq += 1;
+    s.suppression.unshift({ id: `x${s.seq}`, contact: prospect.email, reason: routed.category === "hostile" ? "Hostile reply — auto-suppressed" : "Unsubscribed by reply — auto-suppressed", added: shortDate(Date.now()) });
+    prospect.stage = "rejected";
+    prospect.lastAction = "Opted out, {ago}";
+    prospect.nextStep = "Suppressed — do not contact";
+    addEvent(s, { campaignId: campaign.id, type: "reject", text: `**${prospect.name}** (${prospect.company}) opted out — added to the global suppression list, no LLM call used`, featured: true });
+  } else {
+    prospect.lastAction = "Out-of-office reply, {ago}";
+    prospect.nextStep = "Follow up after they return";
+  }
+
+  pushDecision(s, {
+    kind: optOut ? "rejected" : "strategy",
+    campaignId: campaign.id,
+    prospectId: prospect.id,
+    agent: "Reply Router",
+    harness: "embedding match",
+    engine: "embedding-router",
+    headline: `${optOut ? "Opt-out" : "Out-of-office"} — ${prospect.name}, ${prospect.company}`,
+    summary: `Reply from **${prospect.name}**, ${prospect.company} routed as ${routed.category} without an LLM call`,
+    evidence: [
+      `Reply: "${prospect.conversation[prospect.conversation.length - 1].text}"`,
+      `Closest canonical reply category: ${routed.category} (similarity ${routed.score.toFixed(2)}, ${routed.margin.toFixed(2)} clear of the nearest judgment category)`,
+    ],
+    retrieved: ["Canonical example replies (knowledge base)"],
+    instruction: "Clear-cut opt-outs, hostile replies and out-of-office auto-replies are routed by embedding similarity; only ambiguous replies reach the Conversation Agent.",
+    finalAction: optOut ? "Add the contact to the global suppression list and stop all outreach" : "Pause follow-ups until the contact is back",
+  });
 }
 
 async function runConversation(s, campaign) {
@@ -200,14 +296,19 @@ async function runConversation(s, campaign) {
 
   for (const prospect of contacted.slice(0, config.schedulerBatchSize)) {
     if (Math.random() > 0.35) continue; // not every prospect replies on every tick
-    const objection = Math.random() < 0.3;
-    const replyText = objection
-      ? "Before we go further — can you share your SOC 2 report and where data is stored?"
-      : Math.random() < 0.5
-      ? "Interesting — could we do a quick call this week?"
-      : "Thanks for reaching out, tell me more about pricing.";
+    const { text: replyText, kind: replyKind } = simulateReply();
     prospect.conversation.push({ dir: "in", text: replyText, when: "Today" });
-    prospect.history.push({ kind: "email", text: `Reply received — ${objection ? "security / compliance objection" : "asked about pricing"}`, when: "Today" });
+
+    // Matching before judgment: clear-cut opt-outs and auto-replies are settled by embedding
+    // similarity to canonical examples, with no LLM call. Everything else goes to the agent below.
+    const routed = await classifyReply(replyText);
+    if (routed.deterministic) {
+      applyRoutedReply(s, campaign, prospect, routed);
+      prospect.lastTs = Date.now();
+      continue;
+    }
+
+    prospect.history.push({ kind: "email", text: `Reply received — ${replyKind}`, when: "Today" });
     prospect.stage = "engaged";
     campaign.funnel.engaged += 1;
     campaign.outreach.replies += 1;
@@ -233,7 +334,7 @@ async function runConversation(s, campaign) {
         prospect.nextStep = "Human review";
         addEvent(s, { campaignId: campaign.id, type: "escalate", text: `Conversation Agent escalated **${prospect.name}** — needs human input`, featured: false });
       } else if (result.action === "meeting") {
-        if (campaign.approvals.meetingTime) {
+        if (campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok) {
           pushApproval(s, {
             type: "meeting",
             prospectId: prospect.id,
@@ -261,6 +362,7 @@ async function runConversation(s, campaign) {
             prospectId: prospect.id,
             agent: "Conversation & Follow-up Agent",
             harness: result.harness,
+            engine: result.engine,
             headline: `Meeting booked — ${prospect.name}, ${prospect.company}`,
             summary: `Conversation Agent booked a meeting with **${prospect.name}**, ${prospect.company}`,
             evidence: [result.reasoning],

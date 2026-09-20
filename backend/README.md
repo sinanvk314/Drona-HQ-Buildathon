@@ -152,6 +152,28 @@ Section 3) are always answerable from real data, not seeded text.
 Pausing one campaign only calls `transition()` on that campaign's own record — every other
 campaign's scheduler loop is unaffected, satisfying the PS's required demonstration.
 
+### Matching vs judgment, cost control and approval levels
+
+Decisions are split into **matching** (geometry, free) and **judgment** (an LLM):
+
+- **Clear-cut ICP rejections** skip the LLM (`ICP_SHORTCUT_MARGIN`). Qualifications always get the LLM's read.
+- **Reply routing** (`services/replyRouter.js`): unsubscribe, hostile and out-of-office replies are matched by
+  embedding similarity to canonical examples in `data/knowledge/reply-examples.json` and handled with no LLM call
+  (opt-outs go onto the global suppression list). Anything ambiguous goes to the Conversation Agent.
+- **Retrieval** (`services/rag.js`): knowledge chunks are embedded locally (`services/embeddings.js`, bge-small via
+  `fastembed`, no API key; model cached in `data/.embedding-cache` after the first download) and ranked by cosine
+  similarity, with TF-IDF as the fallback if the model cannot load. Retrieval only searches the campaign's own sources.
+- **Daily LLM cap** (`LLM_DAILY_CALL_CAP`, default 300, 0 = off): every provider request is counted in
+  `data/usage.json`; past the cap the rule engine decides. The Command Center's "AI Efficiency" panel and `/health`
+  show calls made, decisions with no LLM call, and the estimated cost saved.
+- **Approval levels** per campaign (`approvals.level`): `manual` (toggled actions wait for a human), `assisted`
+  (auto-approve at fit >= `autoMinScore` after `autoAfterApproved` human approvals of that action), `autonomous`.
+  Escalated objections always need a human. In Postgres mode the level fields are not persisted yet (the adapter maps
+  only the three toggles).
+- **Knowledge sources** are per campaign: either a shipped document (`docId` -> `data/knowledge/<docId>.txt`) or text
+  added in the UI (`content`). Add and remove from the campaign page (`POST /campaigns/:id/sources`,
+  `DELETE /campaigns/:id/sources/:sourceId`).
+
 ## 5. API reference
 
 All routes are mounted under `/api`. Request/response bodies mirror the frontend's

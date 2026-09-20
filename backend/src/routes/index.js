@@ -19,6 +19,8 @@ router.post("/campaigns", asyncRoute(async (req, res) => {
   res.json(data.createCampaign(values || {}, { launch: !!launch }));
 }));
 router.get("/campaigns/:id", asyncRoute(async (req, res) => res.json(data.getCampaign(req.params.id))));
+router.post("/campaigns/:id/sources", asyncRoute(async (req, res) => res.json(data.addCampaignSource(req.params.id, req.body || {}))));
+router.delete("/campaigns/:id/sources/:sourceId", asyncRoute(async (req, res) => res.json(data.removeCampaignSource(req.params.id, req.params.sourceId))));
 router.post("/campaigns/:id/pause", asyncRoute(async (req, res) => res.json(data.pauseCampaign(req.params.id))));
 router.post("/campaigns/:id/resume", asyncRoute(async (req, res) => res.json(data.resumeCampaign(req.params.id))));
 router.post("/campaigns/:id/launch", asyncRoute(async (req, res) => res.json(data.launchCampaign(req.params.id))));

@@ -10,6 +10,7 @@
 // failure (missing key, 429, timeout, blocked or malformed output) throws; agentEngine/index.js
 // then moves to the next engine in the AGENT_ENGINE chain, ending at the rule engine.
 import { config, geminiModels } from "../../config.js";
+import { capReached, recordLlmCall } from "../usage.js";
 import {
   campaignBlock,
   dossierFor,
@@ -126,7 +127,9 @@ async function throttle() {
 async function generateOnce({ system, input, schema }, model) {
   const g = config.gemini;
   if (!g.apiKey) throw new GeminiError("GEMINI_API_KEY is not set");
+  if (capReached()) throw new GeminiError(`daily LLM call cap reached (LLM_DAILY_CALL_CAP=${config.llmDailyCallCap})`);
   await throttle();
+  recordLlmCall(model); // every request counts against Google's quota, retries included
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), g.timeoutMs);
