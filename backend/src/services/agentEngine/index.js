@@ -1,10 +1,11 @@
 // Single seam the scheduler and routes call through — dispatches to the real LLM engine
 // (PS Section 4's "Agentic AI") when configured, and always falls back to the deterministic
 // rule engine so the backend runs end to end with zero setup. See ruleEngine.js / llmEngine.js.
-import { config, isDronahqMode, isLlmMode } from "../../config.js";
+import { config, engineChain, isLlmMode } from "../../config.js";
 import * as rule from "./ruleEngine.js";
 import * as llm from "./llmEngine.js";
 import * as dronahq from "./dronahqEngine.js";
+import * as gemini from "./geminiEngine.js";
 import { retrieve } from "../rag.js";
 
 function activePromptFor(agent, campaignId) {
@@ -13,29 +14,28 @@ function activePromptFor(agent, campaignId) {
   return { text: active ? active.text : "", harness: active ? active.version : "v0", override: override ? override.text : null };
 }
 
-// AGENT_ENGINE=dronahq routes to the DronaHQ agents; llm to the Anthropic API; anything else (or
-// any failure, unless DRONAHQ_FALLBACK=none) to the deterministic rule engine. `engine` on the
-// result says which one actually produced the decision, and `fallbackReason` says why it was the
-// rule engine when another was requested.
-async function withFallback(llmCall, ruleCall, dronahqCall) {
-  let fallbackReason = null;
-  if (isDronahqMode() && dronahqCall) {
+// AGENT_ENGINE is a chain of engines tried in order: "dronahq", "gemini", "llm" (Anthropic), for
+// example "dronahq,gemini". The first that succeeds decides. The deterministic rule engine is always
+// the last resort, so the backend never stalls. `engine` on the result names who actually decided,
+// and `fallbackReason` lists why earlier engines were skipped. Strict mode (DRONAHQ_FALLBACK=none or
+// GEMINI_FALLBACK=none) makes that engine's failure throw instead of moving on, so it can't be masked.
+const isStrict = (name) =>
+  (name === "dronahq" && config.dronahq.fallback === "none") || (name === "gemini" && config.gemini.fallback === "none");
+
+async function withFallback(llmCall, ruleCall, dronahqCall, geminiCall) {
+  const failures = [];
+  for (const name of engineChain()) {
+    const call = name === "dronahq" ? dronahqCall : name === "gemini" ? geminiCall : name === "llm" && isLlmMode() ? llmCall : null;
+    if (!call) continue;
     try {
-      return { ...(await dronahqCall()), engine: "dronahq" };
+      return { ...(await call()), engine: name };
     } catch (e) {
-      if (config.dronahq.fallback === "none") throw e;
-      fallbackReason = `DronaHQ call failed: ${e.message}`;
-      console.warn(`[agentEngine] ${fallbackReason} — falling back to rule engine`);
-    }
-  } else if (isLlmMode()) {
-    try {
-      return { ...(await llmCall()), engine: "llm" };
-    } catch (e) {
-      fallbackReason = `LLM call failed: ${e.message}`;
-      console.warn("[agentEngine] LLM call failed, falling back to rule engine:", e.message);
+      if (isStrict(name)) throw e;
+      failures.push(`${name}: ${e.message}`);
+      console.warn(`[agentEngine] ${name} failed (${e.message}); trying the next engine`);
     }
   }
-  return { ...ruleCall(), engine: "rule", ...(fallbackReason ? { fallbackReason } : {}) };
+  return { ...ruleCall(), engine: "rule", ...(failures.length ? { fallbackReason: failures.join(" | ") } : {}) };
 }
 
 export async function scoreICP({ state, campaign, prospect, icpAgent }) {
@@ -44,7 +44,8 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   const result = await withFallback(
     () => llm.llmScoreICP({ campaign, prospect, promptText: text, knowledge }),
     () => rule.ruleScoreICP({ campaign, prospect }),
-    () => dronahq.dronahqScoreICP({ campaign, prospect, promptText: text, knowledge })
+    () => dronahq.dronahqScoreICP({ campaign, prospect, promptText: text, knowledge }),
+    () => gemini.geminiScoreICP({ campaign, prospect, promptText: text, knowledge })
   );
   return { ...result, harness, retrieved: knowledge.map((k) => k.label), instruction: override || text };
 }
@@ -55,7 +56,8 @@ export async function draftOutreach({ campaign, prospect, personalisationAgent }
   const result = await withFallback(
     () => llm.llmDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
     () => rule.ruleDraftOutreach({ campaign, prospect, knowledge, override }),
-    () => dronahq.dronahqDraftOutreach({ campaign, prospect, promptText: text, override, knowledge })
+    () => dronahq.dronahqDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
+    () => gemini.geminiDraftOutreach({ campaign, prospect, promptText: text, override, knowledge })
   );
   return { ...result, harness, retrieved: knowledge.map((k) => k.label), instruction: override || text };
 }
@@ -67,7 +69,8 @@ export async function handleConversation({ campaign, prospect, conversationAgent
   const result = await withFallback(
     () => llm.llmHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
     () => rule.ruleHandleConversation({ campaign, prospect }),
-    () => dronahq.dronahqHandleConversation({ campaign, prospect, promptText: text, override, knowledge })
+    () => dronahq.dronahqHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
+    () => gemini.geminiHandleConversation({ campaign, prospect, promptText: text, override, knowledge })
   );
   return { ...result, harness, retrieved: knowledge.map((k) => k.label), instruction: override || text };
 }

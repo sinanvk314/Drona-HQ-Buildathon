@@ -4,8 +4,11 @@
 // How the call works (confirmed by hand against a live agent):
 //   POST <webhook url>   header  api-key: <that trigger's key>   body  <JSON payload below>
 //   -> 200 {success, thread_id, run_id, message, response}
-// The call is SYNCHRONOUS: `response` carries the agent's output in the same HTTP response.
-// `response` is normally a STRING (the agent's final message), so it is parsed as JSON here,
+// KNOWN LIMITATION (found in testing): for our ICP agent the reply did NOT carry the output. With
+// the trigger's Response = Standard, `response` came back null even though the run's trace shows
+// the correct JSON was produced (Agent End result had only a summary); with Response = None the reply
+// was just "Agent run started in background". Your very first call did return text in `response`
+// as a STRING (the agent's final message). Where the output does arrive, it is parsed as JSON here,
 // tolerating a ```json fence or a sentence around the object. If the agent answered in prose
 // instead of JSON, parsing throws, and index.js records the fallback rather than inventing a
 // decision.
@@ -55,10 +58,46 @@ async function callWebhook(agentKey, body) {
 }
 
 /** Pulls the agent's JSON object out of the webhook envelope. Exported for tests. */
+// `text` is the field of DronaHQ's own "Text Response" schema template ({type: "text", text: "..."}).
+const OUTPUT_KEYS = ["response", "output", "result", "data", "answer", "text"];
+const looksLikeAgentOutput = (o) =>
+  o && typeof o === "object" && ["decision", "fit_score", "score", "qualified", "action", "channel", "draft_message"].some((k) => k in o);
+
+// Finds the agent's output inside the webhook reply. Normally it is `response`, but a Standard-schema
+// trigger may nest it or use another key, so look in the usual places before giving up. (`message` is
+// deliberately not searched: it is DronaHQ's status text, e.g. "Agent run completed successfully".)
+function locateOutput(node, depth = 0) {
+  if (typeof node === "string") return node.trim() ? node : undefined;
+  if (!node || typeof node !== "object" || Array.isArray(node)) return undefined;
+  if (looksLikeAgentOutput(node)) return node;
+  if (depth > 2) return undefined;
+  for (const key of OUTPUT_KEYS) {
+    if (key in node) {
+      const found = locateOutput(node[key], depth + 1);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+// A short, safe description of a reply (long strings clipped) for error messages, so a failure says
+// what the webhook actually returned instead of guessing.
+function describe(value, depth = 0) {
+  if (typeof value === "string") return value.length > 80 ? `${value.slice(0, 80)}…` : value;
+  if (Array.isArray(value)) return depth > 2 ? "[…]" : value.slice(0, 3).map((v) => describe(v, depth + 1));
+  if (value && typeof value === "object") {
+    if (depth > 2) return "{…}";
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, describe(v, depth + 1)]));
+  }
+  return value;
+}
+
 export function parseAgentOutput(envelope) {
-  const out = envelope && typeof envelope === "object" && "response" in envelope ? envelope.response : envelope;
-  if (out && typeof out === "object") return out;
-  if (typeof out !== "string") throw new DronaHQError("webhook response had no agent output");
+  const out = locateOutput(envelope);
+  if (out === undefined) {
+    throw new DronaHQError(`no agent output found in the webhook reply. Reply was: ${JSON.stringify(describe(envelope)).slice(0, 700)}`);
+  }
+  if (typeof out === "object") return out;
   const text = out.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -131,12 +170,12 @@ export function normalizeConversation(o) {
 // The agent reads its whole input as {{body}}, so these keys are what its Instructions can reference
 // (e.g. {{body.person.title}}, {{body.campaign.icp}}, {{body.dossier}}).
 
-const personAndCompany = (p) => ({
+export const personAndCompany = (p) => ({
   person: { name: p.name, title: p.title, email: p.email },
   company: { name: p.company, industry: p.industry, size: p.size, funding: p.funding, tech: p.tech, city: p.city },
 });
 
-const campaignBlock = (c) => ({
+export const campaignBlock = (c) => ({
   id: c.id,
   name: c.name,
   icp: c.icpText,
@@ -151,7 +190,7 @@ const campaignBlock = (c) => ({
 
 // Best-effort dossier from what the backend keeps on the prospect (its prior qualification and
 // activity history), in the shared entry shape.
-function dossierFor(p) {
+export function dossierFor(p) {
   const entries = [];
   if (p.qual && p.qual.status && p.qual.status !== "Pending") {
     entries.push({ agent_name: p.qual.agent, harness_version: p.qual.harness, decision: p.qual.status, handoff_note: p.qual.reasoning });
@@ -160,7 +199,7 @@ function dossierFor(p) {
   return entries;
 }
 
-const knowledgePayload = (knowledge) => (knowledge || []).map((k) => ({ label: k.label, text: k.text }));
+export const knowledgePayload = (knowledge) => (knowledge || []).map((k) => ({ label: k.label, text: k.text }));
 
 export async function dronahqScoreICP({ campaign, prospect, promptText, knowledge }) {
   const envelope = await callWebhook("icp", {

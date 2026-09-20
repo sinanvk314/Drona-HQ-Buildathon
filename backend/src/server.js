@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { activeEngine, config, dronahqStatus } from "./config.js";
+import { activeEngine, config, dronahqStatus, isDronahqMode, isGeminiMode } from "./config.js";
 import { router } from "./routes/index.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
 import { startScheduler } from "./services/scheduler.js";
@@ -22,7 +22,8 @@ app.get("/health", (req, res) =>
   res.json({
     ok: true,
     agentEngine: activeEngine(),
-    ...(activeEngine() === "dronahq" ? { dronahqWebhooksConfigured: dronahqStatus() } : {}),
+    ...(isDronahqMode() ? { dronahqWebhooksConfigured: dronahqStatus() } : {}),
+    ...(isGeminiMode() ? { geminiKeyConfigured: !!config.gemini.apiKey, geminiModel: config.gemini.model } : {}),
     schedulerIntervalMs: config.schedulerIntervalMs,
   })
 );
@@ -36,11 +37,13 @@ async function main() {
   await initDb(); // loads/seeds Postgres or the local JSON file before anything can query it
   app.listen(config.port, () => {
     console.log(`Autonomous SDR backend listening on :${config.port}`);
-    const engineLabel = { dronahq: "dronahq (DronaHQ Agentic AI webhooks)", llm: "llm (Anthropic API)", rule: "rule (deterministic, zero-cost)" };
-    console.log(`Agent engine: ${engineLabel[activeEngine()]}`);
-    if (activeEngine() === "dronahq") {
+    console.log(`Agent engine chain: ${activeEngine()}  (dronahq = DronaHQ webhooks, gemini = Google Gemini, llm = Anthropic, rule = deterministic)`);
+    if (isDronahqMode()) {
       const missing = Object.entries(dronahqStatus()).filter(([, ok]) => !ok).map(([k]) => k);
-      if (missing.length) console.warn(`[dronahq] No webhook configured for: ${missing.join(", ")} — those agents will ${config.dronahq.fallback === "none" ? "FAIL" : "fall back to the rule engine"}.`);
+      if (missing.length) console.warn(`[dronahq] No webhook configured for: ${missing.join(", ")} — those agents will ${config.dronahq.fallback === "none" ? "FAIL" : "move to the next engine"}.`);
+    }
+    if (isGeminiMode() && !config.gemini.apiKey) {
+      console.warn(`[gemini] GEMINI_API_KEY is not set — Gemini calls will fail and ${config.gemini.fallback === "none" ? "FAIL" : "move to the next engine"}.`);
     }
     console.log(`Datastore: ${config.databaseUrl ? "Postgres (Neon)" : "local JSON file"}`);
     console.log(`Allowed origins: ${config.allowedOrigins.join(", ")}`);

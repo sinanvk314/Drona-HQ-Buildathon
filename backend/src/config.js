@@ -12,10 +12,31 @@ export const config = {
   // When set, the JSON file store is bypassed entirely and Postgres (Neon) is the source of
   // truth — see src/db/index.js. Leave unset to keep the zero-setup local JSON file behavior.
   databaseUrl: process.env.DATABASE_URL || "",
-  agentEngine: (process.env.AGENT_ENGINE || "rule").toLowerCase(), // "rule" | "llm" | "dronahq"
+  // Which engine(s) decide. One of "rule" | "llm" | "dronahq" | "gemini", or a comma-separated CHAIN
+  // tried in order, e.g. "dronahq,gemini" (then the rule engine is the final fallback).
+  agentEngine: (process.env.AGENT_ENGINE || "rule").toLowerCase(),
+  // Google Gemini (free tier available). Structured JSON output is enforced by the API itself.
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || "",
+    // Google retires models often (gemini-2.5-flash returned "no longer available to new users" in
+    // testing). List what your key can use with:  node backend\scripts\gemini-models.mjs
+    model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+    baseUrl: process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
+    timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS) || 30000,
+    // Temporary errors (HTTP 429 rate limit, 500/502/503/504 "high demand") are retried with a growing
+    // pause: retryDelayMs, then 2x, 3x... A Retry-After header from Google overrides the pause.
+    retries: process.env.GEMINI_RETRIES ? Number(process.env.GEMINI_RETRIES) : 2,
+    retryDelayMs: Number(process.env.GEMINI_RETRY_DELAY_MS) || 2000,
+    // Client-side throttle: requests per minute. The free tier is roughly 15 RPM, so stay under it.
+    rpm: Number(process.env.GEMINI_RPM) || 12,
+    // "rule" (default): on failure fall through to the next engine. "none": rethrow, so failures show.
+    fallback: (process.env.GEMINI_FALLBACK || "rule").toLowerCase(),
+  },
   // DronaHQ Agentic AI: each agent is called through its Webhook Trigger, with the trigger's
-  // API key sent in the `api-key` header. Confirmed synchronous — the agent's output comes back
-  // in the same HTTP response (see src/services/agentEngine/dronahqEngine.js).
+  // API key sent in the `api-key` header. NOTE: in testing, the webhook reply did NOT carry the
+  // agent's output (Response=Standard returned `response: null`, None returned "started in
+  // background"), even though the run's trace shows the correct JSON was produced. This engine
+  // works if a setup that returns the output is found; until then use the chain with gemini.
   dronahq: {
     timeoutMs: Number(process.env.DRONAHQ_TIMEOUT_MS) || 90000,
     // "rule" (default): if a DronaHQ call fails, fall back to the rule engine for that one decision.
@@ -41,18 +62,27 @@ export const config = {
   schedulerBatchSize: Number(process.env.SCHEDULER_BATCH_SIZE) || 3,
 };
 
+/** The engines to try, in order, from AGENT_ENGINE ("dronahq,gemini" -> ["dronahq", "gemini"]). */
+export function engineChain() {
+  return config.agentEngine.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export function isLlmMode() {
-  return config.agentEngine === "llm" && !!config.anthropicApiKey;
+  return engineChain().includes("llm") && !!config.anthropicApiKey;
 }
 
 export function isDronahqMode() {
-  return config.agentEngine === "dronahq";
+  return engineChain().includes("dronahq");
 }
 
-/** Which engine will actually run: "dronahq" | "llm" | "rule". */
+export function isGeminiMode() {
+  return engineChain().includes("gemini");
+}
+
+/** Human-readable engine label for logs and /health, e.g. "dronahq > gemini > rule". */
 export function activeEngine() {
-  if (isDronahqMode()) return "dronahq";
-  return isLlmMode() ? "llm" : "rule";
+  const chain = engineChain().filter((e) => e !== "rule" && (e !== "llm" || isLlmMode()));
+  return [...chain, "rule"].join(" > ");
 }
 
 /** For /health: which DronaHQ agents have a webhook configured (booleans only — never URLs or keys). */

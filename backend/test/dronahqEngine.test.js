@@ -65,6 +65,38 @@ test("parses JSON surrounded by a sentence", () => {
   assert.equal(out.decision, "Rejected");
 });
 
+test("finds the output under another usual key when `response` is empty", () => {
+  const base = { success: true, thread_id: "t", run_id: "r", message: "Agent run completed successfully." };
+  assert.equal(parseAgentOutput({ ...base, response: null, output: { decision: "Qualified", fit_score: 80 } }).fit_score, 80);
+  assert.equal(parseAgentOutput({ ...base, response: "", result: '{"decision":"Rejected","fit_score":5}' }).decision, "Rejected");
+});
+
+test("finds the output when it is nested one level down (data.response)", () => {
+  const out = parseAgentOutput({ success: true, data: { response: '```json\n{"decision":"Escalate","fit_score":40}\n```' } });
+  assert.equal(out.decision, "Escalate");
+});
+
+test("an envelope with an empty `response` fails with a message that shows what the reply contained", () => {
+  const reply = { success: true, thread_id: "t-123", run_id: "r-456", message: "Agent run completed successfully.", response: null };
+  assert.throws(
+    () => parseAgentOutput(reply),
+    (e) => e instanceof DronaHQError && /no agent output found/.test(e.message) && /Reply was:/.test(e.message) && /"response":null/.test(e.message)
+  );
+});
+
+test("DronaHQ's status `message` is never mistaken for the agent's output", () => {
+  assert.throws(() => parseAgentOutput({ success: true, message: "Agent run completed successfully." }), /no agent output found/);
+});
+
+test("long strings in the error preview are clipped, so a reply cannot flood the log", () => {
+  try {
+    parseAgentOutput({ success: true, response: null, note: "x".repeat(5000) });
+    assert.fail("should have thrown");
+  } catch (e) {
+    assert.ok(e.message.length < 900, `message was ${e.message.length} chars`);
+  }
+});
+
 test("accepts an already-structured response object", () => {
   assert.equal(parseAgentOutput(envelope({ decision: "Qualified", fit_score: 90 })).fit_score, 90);
 });
@@ -185,4 +217,12 @@ test("an unconfigured agent webhook is a clear error", async () => {
     config.dronahq.webhooks.icp.url = saved;
     config.dronahq.fallback = "rule";
   }
+});
+
+test("finds the agent's JSON inside DronaHQ's Text Response shape ({type:'text', text:'...'})", () => {
+  const out = parseAgentOutput({
+    success: true,
+    response: { type: "text", text: '```json\n{"decision":"Qualified","fit_score":88}\n```' },
+  });
+  assert.equal(out.fit_score, 88);
 });
