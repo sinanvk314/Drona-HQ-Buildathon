@@ -1,6 +1,7 @@
 // Run: npm test   (uses Node's built-in test runner; no extra dependencies)
 // A fake DronaHQ webhook stands in for the real one, returning the real envelope shape:
 //   {success, thread_id, run_id, message, response}
+import "./_setup.js"; // keep test LLM usage out of the real usage counters
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

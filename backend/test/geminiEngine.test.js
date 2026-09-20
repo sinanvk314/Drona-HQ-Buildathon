@@ -1,5 +1,6 @@
 // Run: npm test. A fake server stands in for Gemini's generateContent API (real response shape:
 // candidates[0].content.parts[0].text holds the JSON string) and for a failing DronaHQ webhook.
+import "./_setup.js"; // keep test LLM usage out of the real usage counters
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
