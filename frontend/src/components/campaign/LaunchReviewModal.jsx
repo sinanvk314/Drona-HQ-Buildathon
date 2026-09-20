@@ -18,7 +18,7 @@ export default function LaunchReviewModal({ campaignId, onClose, onLaunch }) {
 
   return (
     <Modal
-      title={review ? `Review before launching — ${review.name}` : "Review before launching"}
+      title={review ? `Review before launching - ${review.name}` : "Review before launching"}
       onClose={onClose}
       width={620}
       footer={

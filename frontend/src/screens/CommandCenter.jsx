@@ -92,7 +92,7 @@ export default function CommandCenter({ routeName }) {
         ) : (
           <div className="card" style={{ background: "var(--success-soft)", borderColor: "#CBEBDA", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
             <Icon name="check" size={20} stroke={1.7} color="var(--success)" />
-            <div style={{ fontSize: 13.5 }}>You're all caught up — no actions are waiting for approval.</div>
+            <div style={{ fontSize: 13.5 }}>You're all caught up - no actions are waiting for approval.</div>
           </div>
         )}
 
@@ -113,12 +113,12 @@ export default function CommandCenter({ routeName }) {
         <EfficiencyPanel u={data.efficiency} />
 
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Overall Funnel — All Campaigns</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Overall Funnel - All Campaigns</div>
           <Funnel stages={data.funnel} height={100} />
         </div>
 
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>AI Agent Activity — Live Feed</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>AI Agent Activity - Live Feed</div>
           {data.feed.length === 0 && <div style={{ fontSize: 13, color: "var(--text-2)" }}>No agent activity yet.</div>}
           <div style={{ display: "flex", flexDirection: "column" }}>
             {data.feed.map((e, i) => {

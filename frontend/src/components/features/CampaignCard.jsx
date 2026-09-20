@@ -14,7 +14,7 @@ export default function CampaignCard({ card, onAction, onOpen }) {
         <Tag>{card.owner}</Tag>
       </div>
       <div>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>{card.name}</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{card.name}</div>
         <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>{card.icpSummary}</div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

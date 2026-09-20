@@ -35,14 +35,24 @@ export default function ProspectTable({ rows, showCampaign, onOpen, emptyText = 
           ))}
         </select>
       </div>
-      <table>
+      <table style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: showCampaign ? "14%" : "16%" }} />
+          <col style={{ width: showCampaign ? "15%" : "17%" }} />
+          {showCampaign && <col style={{ width: "13%" }} />}
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: showCampaign ? "14%" : "16%" }} />
+          <col style={{ width: showCampaign ? "17%" : "24%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th>Company</th>
             <th>Contact</th>
             {showCampaign && <th>Campaign</th>}
             <th>Stage</th>
-            <th>ICP Fit</th>
+            <th style={{ textAlign: "center" }}>ICP Fit</th>
             <th>Channel</th>
             <th>Last Action</th>
             <th>Next Step</th>
@@ -59,14 +69,14 @@ export default function ProspectTable({ rows, showCampaign, onOpen, emptyText = 
                 if (e.key === "Enter") onOpen(r.id);
               }}
             >
-              <td><strong>{r.company}</strong></td>
-              <td>{r.contact}</td>
-              {showCampaign && <td>{r.campaignName}</td>}
+              <td style={{ overflowWrap: "anywhere" }}><strong>{r.company}</strong></td>
+              <td style={{ overflowWrap: "anywhere" }}>{r.contact}</td>
+              {showCampaign && <td style={{ overflowWrap: "anywhere" }}>{r.campaignName}</td>}
               <td><StageBadge stage={r.stage} /></td>
-              <td>{r.fit == null ? "—" : r.fit}</td>
+              <td style={{ textAlign: "center" }}>{r.fit == null ? "-" : r.fit}</td>
               <td>{r.channel}</td>
-              <td>{resolveAgo(r.lastAction, r.lastTs)}</td>
-              <td>{r.nextStep}</td>
+              <td style={{ overflowWrap: "anywhere" }}>{resolveAgo(r.lastAction, r.lastTs)}</td>
+              <td style={{ overflowWrap: "anywhere" }}>{r.nextStep}</td>
             </tr>
           ))}
         </tbody>

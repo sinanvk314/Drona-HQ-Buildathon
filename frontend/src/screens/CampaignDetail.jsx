@@ -124,13 +124,13 @@ export default function CampaignDetail({ params }) {
         {!draft && <CampaignActivity activity={c.activity} outcomes={c.outcomes} />}
 
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Prospect Funnel</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Prospect Funnel</div>
           <Funnel stages={c.funnel} height={90} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
           <div className="card" style={{ padding: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Agent Activity Timeline</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Agent Activity Timeline</div>
             {c.timeline.length === 0 && (
               <div style={{ fontSize: 13, color: "var(--text-2)" }}>
                 {draft ? "Agent activity starts once this campaign is live." : "No agent activity yet."}
@@ -148,7 +148,7 @@ export default function CampaignDetail({ params }) {
             ))}
           </div>
           <div className="card" style={{ padding: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Outreach Activity</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Outreach Activity</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
               {[
                 ["Emails sent", fmt(o.emails)],
@@ -177,7 +177,7 @@ export default function CampaignDetail({ params }) {
               )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
                 <span>Est. cost / qualified lead</span>
-                <strong>{draft || !o.costPerQualified ? "—" : `$${o.costPerQualified.toFixed(2)}`}</strong>
+                <strong>{draft || !o.costPerQualified ? "-" : `$${o.costPerQualified.toFixed(2)}`}</strong>
               </div>
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function CampaignDetail({ params }) {
 
         <div className="card" style={{ padding: 20, background: "var(--warning-soft)", borderColor: "#F3DDBB" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Human Approval Queue — {c.approvals.count} pending</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Human Approval Queue - {c.approvals.count} pending</div>
             <button type="button" className="link" style={{ fontSize: 12.5 }} onClick={() => navigate("approvals")}>
               Open Approvals →
             </button>
@@ -221,7 +221,7 @@ export default function CampaignDetail({ params }) {
         <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} cadence={c.cadence} />
 
         <div className="card">
-          <div style={{ padding: "18px 20px 4px 20px", fontSize: 14, fontWeight: 700 }}>Prospects</div>
+          <div style={{ padding: "18px 20px 4px 20px", fontSize: 15, fontWeight: 700 }}>Prospects</div>
           <ProspectTable
             rows={c.prospects}
             onOpen={(id) => navigate("prospect", { id })}

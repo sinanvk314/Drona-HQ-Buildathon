@@ -29,7 +29,7 @@ function NewSource({ campaigns, onDone }) {
   };
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 12 }}>Add a knowledge source</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Add a knowledge source</div>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
         <div>
           <label className="field-label" htmlFor="k-name">Name</label>
@@ -82,7 +82,7 @@ function Tester({ campaigns }) {
   };
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700 }}>Test retrieval</div>
+      <div style={{ fontSize: 15, fontWeight: 700 }}>Test retrieval</div>
       <div className="field-hint" style={{ marginTop: 2, marginBottom: 12 }}>
         Ask a question the way a prospect might and see which passages an agent in that campaign would be shown. If the right passage does not come up, the source needs clearer text.
       </div>
@@ -139,7 +139,7 @@ export default function Knowledge() {
         <div className="card" style={{ padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ flexGrow: 1 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Knowledge library</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Knowledge library</div>
               <div className="field-hint" style={{ marginTop: 2 }}>
                 Everything the agents may draw on, across all campaigns. Each campaign only ever searches its own sources, so giving a source to a campaign is what lets its agents use it.
               </div>

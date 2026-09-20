@@ -61,7 +61,7 @@ export default function EmailTab() {
       </div>
 
       <div className="card" style={{ padding: 22 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Try it</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Try it</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
           <button type="button" className="btn btn-secondary" disabled={!!busy} onClick={() => run("connection", () => testEmailConnection())}>1. Test the connection</button>
           <div style={{ flexGrow: 1, minWidth: 220 }}>
@@ -82,7 +82,7 @@ export default function EmailTab() {
       </div>
 
       <div className="card" style={{ padding: 22 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Recent real messages</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Recent real messages</div>
         {data.recent.length === 0 && <div className="field-hint" style={{ marginTop: 0 }}>None yet. A message appears here when a human approves it in Approvals.</div>}
         {data.recent.map((m, i) => (
           <div key={i} style={{ borderTop: "1px solid var(--border)", padding: "9px 0", fontSize: 13 }}>
@@ -98,7 +98,7 @@ export default function EmailTab() {
       </div>
 
       <div className="card" style={{ padding: 22 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Inbox checks by campaign</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Inbox checks by campaign</div>
         {data.inboxes.length === 0 && <div className="field-hint" style={{ marginTop: 0 }}>No real campaigns yet.</div>}
         {data.inboxes.map((c, i) => (
           <div key={i} style={{ borderTop: i ? "1px solid var(--border)" : "none", padding: "7px 0", fontSize: 13 }}>

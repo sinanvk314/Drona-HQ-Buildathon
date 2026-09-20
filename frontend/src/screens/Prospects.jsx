@@ -14,8 +14,8 @@ export default function Prospects() {
   return (
     <Shell active="prospects" title="Prospects">
       <div className="card">
-        <div style={{ padding: "18px 20px 4px 20px", fontSize: 14, fontWeight: 700 }}>
-          {includeClosed ? "All Prospects" : "Prospects in active campaigns"}{data ? ` — ${data.length}` : ""}
+        <div style={{ padding: "18px 20px 4px 20px", fontSize: 15, fontWeight: 700 }}>
+          {includeClosed ? "All Prospects" : "Prospects in active campaigns"}{data ? ` - ${data.length}` : ""}
           <label style={{ fontSize: 12.5, fontWeight: 400, marginLeft: 16, color: "var(--text-2)", cursor: "pointer" }}>
             <input type="checkbox" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} style={{ marginRight: 6 }} />
             Include completed and archived campaigns

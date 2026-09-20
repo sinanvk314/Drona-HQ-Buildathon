@@ -8,6 +8,8 @@ export const TONES = {
   danger: ["var(--danger-soft)", "var(--danger)"],
   warning: ["var(--warning-soft)", "var(--warning)"],
   muted: ["#F1F5F9", "var(--text-3)"],
+  purple: ["var(--qualified-soft)", "var(--qualified)"],
+  amber: ["var(--engaged-soft)", "var(--engaged)"],
   white: ["#fff", "var(--text-2)"],
 };
 
@@ -30,32 +32,37 @@ export function Tag({ tone, children, style }) {
   );
 }
 
-const STAGE_TONE = {
+// The colour of a prospect's stage, the same everywhere: grey while unjudged, purple once qualified, blue once contacted,
+// amber when they have answered, green for a meeting, red for rejected.
+export const STAGE_TONE = {
   discovered: "neutral",
   researched: "neutral",
-  qualified: "neutral",
+  qualified: "purple",
   contacted: "accent",
-  engaged: "danger",
+  engaged: "amber",
   meeting: "success",
   opportunity: "success",
-  rejected: "muted",
+  rejected: "danger",
+};
+export const STAGE_COLOR = {
+  discovered: "#98A2B3", researched: "#667085", qualified: "var(--qualified)", contacted: "var(--accent)", engaged: "var(--engaged)", meeting: "var(--success)", opportunity: "var(--success)", rejected: "var(--danger)",
 };
 
 export function StageBadge({ stage }) {
   return <Badge tone={STAGE_TONE[stage] || "neutral"}>{STAGE_LABELS[stage] || stage}</Badge>;
 }
 
-export function StatusBadge({ status, large }) {
+export function StatusBadge({ status, large, label }) {
   const big = large ? { fontSize: 12.5, padding: "5px 12px" } : null;
   switch (status) {
     case "live":
-      return <Badge tone="success" dot="var(--success)" style={big}>LIVE</Badge>;
+      return <Badge tone="accent" dot="var(--accent)" style={big}>{label || "LIVE"}</Badge>;
     case "paused":
       return <Badge tone="neutral" dot="var(--text-3)" style={big}>PAUSED</Badge>;
     case "stopped":
       return <Badge tone="danger" dot="var(--danger)" style={big}>STOPPED</Badge>;
     case "completed":
-      return <Badge tone="accent" style={big}>COMPLETED</Badge>;
+      return <Badge tone="success" style={big}>{label || "COMPLETED"}</Badge>;
     case "archived":
       return <Badge tone="muted" style={big}>ARCHIVED</Badge>;
     default:

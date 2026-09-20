@@ -96,7 +96,7 @@ export default function ProspectDetail({ params }) {
 
           <div className="card" style={CARD}>
             <div className="section-title">Company</div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{p.company}</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{p.company}</div>
             <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3 }}>
               {p.industry} · {p.size} · {p.funding}
             </div>
@@ -116,7 +116,7 @@ export default function ProspectDetail({ params }) {
                 }}
                 aria-label={p.fit == null ? "Not scored yet" : `ICP fit score ${p.fit}`}
               >
-                {p.fit == null ? "—" : p.fit}
+                {p.fit == null ? "-" : p.fit}
               </div>
               <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>
                 {p.reasons.map((r) => <li key={r}>{r}</li>)}

@@ -138,10 +138,10 @@ export default function Reps() {
                   <td><Badge tone={r.status === "active" ? "success" : "neutral"}>{r.status === "active" ? "Active" : "Offboarded"}</Badge></td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {r.status === "active" ? (
-                      <>
-                        <button type="button" className="link" onClick={() => setForm(r)}>Edit</button>{" "}
-                        <button type="button" className="link" style={{ color: "var(--danger)" }} onClick={() => setOffboarding(r)}>Offboard</button>
-                      </>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <button type="button" className="btn btn-secondary" style={{ padding: "5px 14px", fontSize: 12.5 }} onClick={() => setForm(r)}>Edit</button>
+                        <button type="button" className="btn btn-danger-outline" style={{ padding: "5px 14px", fontSize: 12.5 }} onClick={() => setOffboarding(r)}>Offboard</button>
+                      </div>
                     ) : (
                       r.campaigns.length > 0 && <button type="button" className="link" onClick={() => setReassigning({ rep: r, to: (active[0] || {}).id })}>Reassign</button>
                     )}

@@ -29,6 +29,14 @@ function emit() {
   });
 }
 
+// Stored history and model-written text can contain em dashes; the interface shows a plain hyphen instead.
+function noEmDashes(value) {
+  if (typeof value === "string") return value.replace(/ \u2014 /g, " - ").replace(/\u2014/g, "-");
+  if (Array.isArray(value)) return value.map(noEmDashes);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, noEmDashes(v)]));
+  return value;
+}
+
 async function request(path, { method = "GET", body } = {}) {
   const token = getToken();
   const headers = { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -40,7 +48,7 @@ async function request(path, { method = "GET", body } = {}) {
   // The session expired or the server needs a code: drop it, which sends the user back to the login page.
   if (res.status === 401 && token) setSession(null);
   const isJson = (res.headers.get("content-type") || "").includes("application/json");
-  const payload = isJson ? await res.json().catch(() => ({})) : null;
+  const payload = isJson ? noEmDashes(await res.json().catch(() => ({}))) : null;
   if (!res.ok) {
     const err = new Error((payload && payload.error) || `Request failed (${res.status}).`);
     if (payload && payload.fields) err.fields = payload.fields;

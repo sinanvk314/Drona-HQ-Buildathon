@@ -43,7 +43,7 @@ export default function SearchTab() {
       {result && (
         <div className="card" style={{ padding: 22 }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{result.candidates.length} result{result.candidates.length === 1 ? "" : "s"}</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{result.candidates.length} result{result.candidates.length === 1 ? "" : "s"}</div>
             <Badge tone="warning">{result.provider}</Badge>
             {result.engine && <Badge tone="neutral">{result.engine}</Badge>}
           </div>

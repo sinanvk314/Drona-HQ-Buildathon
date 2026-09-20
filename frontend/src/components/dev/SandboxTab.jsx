@@ -146,7 +146,7 @@ function Run({ id, onDeleted }) {
       <div className="card" style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 520 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flexGrow: 1 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{p.name}</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
             <div style={{ fontSize: 12, color: "var(--text-2)" }}>{p.title ? `${p.title} · ` : ""}{p.company} · you are playing this person</div>
           </div>
           <Badge tone={card.verdict === "Meeting booked" ? "success" : "neutral"}>{card.verdict}</Badge>

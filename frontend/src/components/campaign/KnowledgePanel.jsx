@@ -34,7 +34,7 @@ export default function KnowledgePanel({ campaignId, sources, policy, cadence })
     <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 18 }}>
       <div className="card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Knowledge Base — {sources.length} {sources.length === 1 ? "source" : "sources"}</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Knowledge Base - {sources.length} {sources.length === 1 ? "source" : "sources"}</div>
           <button type="button" className="btn btn-secondary" onClick={() => setAdding(true)}>
             <Icon name="plus" size={12} stroke={2} />
             Add Source
@@ -65,7 +65,7 @@ export default function KnowledgePanel({ campaignId, sources, policy, cadence })
       </div>
 
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Approval Policy</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Approval Policy</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span>Level</span>

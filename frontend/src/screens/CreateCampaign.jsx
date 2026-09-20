@@ -191,7 +191,7 @@ export default function CreateCampaign({ params = {} }) {
     <Shell active="campaigns" title={title} badge={badge} footer={footer}>
       <div style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 18 }}>
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Who is this campaign for?</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Who is this campaign for?</div>
           <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>
             {editId ? "This cannot be changed once the campaign exists." : "Choose whether the SDR should find a whole audience, or work on one specific person."}
           </div>
@@ -213,7 +213,7 @@ export default function CreateCampaign({ params = {} }) {
         </div>
 
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Real or simulated data?</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Real or simulated data?</div>
           <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>
             {editId ? "This cannot be changed once the campaign exists." : "Simulated is safe for testing: an AI makes up the people and every reply, and nothing is sent. Real uses only people you have added by hand, and can send real email, texts and calls."}
           </div>
@@ -258,7 +258,7 @@ export default function CreateCampaign({ params = {} }) {
         </div>
 
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Campaign Name" htmlFor="cc-name" error={errors.name} hint="A short name managers will recognise on the dashboard and in reports.">
               <input id="cc-name" className={cls("name")} value={v.name} placeholder="What this campaign is called" onChange={(e) => set("name", e.target.value)} />
@@ -287,7 +287,7 @@ export default function CreateCampaign({ params = {} }) {
 
         {single ? (
           <div className="card" style={{ padding: 22 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>The Person</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>The Person</div>
             <div className="field-hint" style={{ marginTop: 0, marginBottom: 14 }}>
               The SDR can only use what you write here: it does not look anything up. The more you know, the more specific its message can be.
             </div>
@@ -320,7 +320,7 @@ export default function CreateCampaign({ params = {} }) {
           </div>
         ) : (
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Targeting &amp; ICP</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Targeting &amp; ICP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="ICP / Target Audience" htmlFor="cc-icp" error={errors.icpText} hint="Who the ideal person is, in plain words: their role, the kind of organisation, its size and region, and any signal that makes them a good fit. The ICP agent judges every prospect against this.">
               <textarea id="cc-icp" className={cls("icpText")} rows={3} value={v.icpText} placeholder="Describe the ideal person and organisation" onChange={(e) => set("icpText", e.target.value)} />
@@ -359,7 +359,7 @@ export default function CreateCampaign({ params = {} }) {
         )}
 
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Channels &amp; Limits</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Channels &amp; Limits</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Channels" error={errors.channels} hint="Where the SDR may reach people. A channel that is turned off is never used.">
               <div style={{ display: "flex", gap: 8 }}>
@@ -399,7 +399,7 @@ export default function CreateCampaign({ params = {} }) {
         </div>
 
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Human Approval Settings</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Human Approval Settings</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {APPROVAL_ROWS.map(([k, label]) => (
               <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -417,7 +417,7 @@ export default function CreateCampaign({ params = {} }) {
           </div>
         ) : (
         <div className="card" style={{ padding: 22 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Campaign Knowledge / RAG Sources</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Campaign Knowledge / RAG Sources</div>
           <div className="field-hint" style={{ marginBottom: 14, marginTop: 0 }}>
             Retrieved by agents before writing outreach or making a qualification decision.
           </div>

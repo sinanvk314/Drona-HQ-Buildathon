@@ -20,16 +20,16 @@ export default function AgentPerformance() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>Campaign health</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Campaign health</div>
         <div className="field-hint" style={{ marginTop: 2, marginBottom: 12 }}>{data.note}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {data.campaigns.length === 0 && <div style={{ fontSize: 13, color: "var(--text-2)" }}>No running campaigns yet.</div>}
           {data.campaigns.map((c) => (
             <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <button type="button" className="link" style={{ fontWeight: 700, fontSize: 13.5 }} onClick={() => navigate("campaignDetail", { id: c.id })}>{c.name}</button>
-                <Badge tone={TONE[c.status]}>{LABEL[c.status]}</Badge>
-                <span style={{ fontSize: 12, color: "var(--text-2)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(160px, 1fr) 140px 3fr", alignItems: "center", gap: 14 }}>
+                <button type="button" className="link" style={{ fontWeight: 700, fontSize: 13.5, textAlign: "left" }} onClick={() => navigate("campaignDetail", { id: c.id })}>{c.name}</button>
+                <div><Badge tone={TONE[c.status]}>{LABEL[c.status]}</Badge></div>
+                <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
                   {c.prospects} prospects · {c.qualified} qualified · {c.contacted} contacted · {c.replies} replied ({rate(c.replyRate)}) · {c.meetings} meetings
                   {c.brief ? ` · brief v${c.brief.version}` : ""}
                 </span>
@@ -47,7 +47,7 @@ export default function AgentPerformance() {
       </div>
 
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>How each agent is doing</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>How each agent is doing</div>
         <div className="field-hint" style={{ marginTop: 2, marginBottom: 12 }}>
           Every agent records which prompt version it ran with, so its results can be split by campaign and by prompt version. Change a prompt, let it run, and compare the rows to see whether the change helped.
         </div>

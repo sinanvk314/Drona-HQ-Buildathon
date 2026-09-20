@@ -27,7 +27,7 @@ export default function CampaignRepsPanel({ campaignId, reps, options, editable 
   return (
     <div className="card" style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Representatives</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Representatives</div>
         {editable && !editing && <button type="button" className="btn btn-secondary" onClick={start}>Change</button>}
       </div>
       <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>

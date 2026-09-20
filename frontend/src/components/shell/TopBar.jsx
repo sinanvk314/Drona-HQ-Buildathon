@@ -31,7 +31,7 @@ export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = 
     setConfirming(false);
     try {
       await setKillSwitch(true);
-      toast("Global Kill Switch activated — all outreach stopped");
+      toast("Global Kill Switch activated - all outreach stopped");
     } catch (e) {
       toast(e.message, "error");
     }
@@ -41,9 +41,10 @@ export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = 
     <header
       style={{
         height: 64, flexShrink: 0, background: "var(--surface)", borderBottom: "1px solid var(--border)",
-        display: "flex", alignItems: "center", padding: "0 28px", gap: 20,
+        display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "0 28px", gap: 20,
       }}
     >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
       {crumbs.map((c, i) => (
         <button
           key={i}
@@ -55,10 +56,12 @@ export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = 
           {c.label} /
         </button>
       ))}
-      <div style={{ fontSize: 17, fontWeight: 700, flexShrink: 0 }}>{title}</div>
-      {badge}
-      <div style={{ flexGrow: 1 }} />
-
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <h1 className="page-title" style={{ margin: 0, whiteSpace: "nowrap" }}>{title}</h1>
+        {badge}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 20, minWidth: 0 }}>
       <label
         style={{
           display: "flex", alignItems: "center", gap: 8, background: "var(--neutral-soft)", borderRadius: 8,
@@ -99,6 +102,7 @@ export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = 
         }}
       >
         {initials(session && session.name)}
+      </div>
       </div>
 
       {confirming && (

@@ -172,7 +172,7 @@ export default function AgentsPrompts() {
             </div>
 
             <div className="card">
-              <div style={{ padding: "16px 20px 4px 20px", fontSize: 13.5, fontWeight: 700 }}>Version History</div>
+              <div className="section-title-lg" style={{ padding: "18px 18px 6px 18px", marginBottom: 0 }}>Version History</div>
               <table>
                 <thead>
                   <tr><th>Version</th><th>Changed by</th><th>Date</th><th>Status</th><th></th></tr>
@@ -188,7 +188,7 @@ export default function AgentsPrompts() {
                       </td>
                       <td>
                         {v.status === "active" ? (
-                          <button type="button" className="link" onClick={() => setModal({ title: `${v.version} — prompt`, body: v.text })}>View</button>
+                          <button type="button" className="link" onClick={() => setModal({ title: `${v.version} - prompt`, body: v.text })}>View</button>
                         ) : (
                           <button
                             type="button"

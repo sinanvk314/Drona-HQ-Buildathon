@@ -40,7 +40,7 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
 
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>Prompts &amp; Harness</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Prompts &amp; Harness</div>
       <div className="field-hint" style={{ marginTop: 0, marginBottom: 14 }}>
         Belongs to this campaign only. Changing it never changes another campaign, and every change is recorded below.
       </div>

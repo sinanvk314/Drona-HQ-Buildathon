@@ -15,6 +15,7 @@ export default function Approvals({ params }) {
   const [draftText, setDraftText] = useState("");
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
 
   const activeId = list ? (list.items.some((i) => i.id === selectedId) ? selectedId : list.items[0] ? list.items[0].id : null) : null;
   const { data: item } = useApi(() => (activeId ? getApproval(activeId) : Promise.resolve(null)), [activeId]);
@@ -23,6 +24,7 @@ export default function Approvals({ params }) {
     setEditing(false);
     setReason("");
     setReasonError(false);
+    setRejecting(false);
   }, [activeId]);
 
   const count = list ? list.count : 0;
@@ -107,7 +109,7 @@ export default function Approvals({ params }) {
                   {initials(item.name)}
                 </div>
                 <div style={{ flexGrow: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{item.name} — {item.company}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{item.name} - {item.company}</div>
                   <div style={{ fontSize: 12, color: "var(--text-2)" }}>{item.campaignName} · requested {timeAgo(item.requestedTs)}</div>
                 </div>
                 <Tag
@@ -180,25 +182,35 @@ export default function Approvals({ params }) {
                 >
                   Edit Draft
                 </button>
-                <button type="button" className="btn btn-danger-outline" style={{ flexGrow: 1 }} onClick={reject}>Reject</button>
+                <button type="button" className="btn btn-danger-outline" style={{ flexGrow: 1 }} onClick={() => setRejecting(true)}>Reject</button>
               </div>
 
-              <div className="card" style={{ padding: "16px 20px" }}>
-                <label htmlFor="escalation-reason" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", display: "block", marginBottom: 6 }}>
-                  Escalation reason (required if rejecting)
-                </label>
-                <input
-                  id="escalation-reason"
-                  className={`input ${reasonError ? "error" : ""}`}
-                  value={reason}
-                  onChange={(e) => {
-                    setReason(e.target.value);
-                    setReasonError(false);
-                  }}
-                  placeholder="e.g. Pricing needs manager sign-off before sharing externally"
-                />
-                {reasonError && <div className="field-error">Add a reason to reject this action.</div>}
-              </div>
+              {rejecting && (
+                <div className="card" style={{ padding: "16px 20px" }}>
+                  <label htmlFor="rejection-reason" style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    Why are you rejecting this?
+                  </label>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 8 }}>
+                    Required. Your reason is saved in the Decision Journal so the team can see why, and it shows what to fix in the prompts.
+                  </div>
+                  <input
+                    id="rejection-reason"
+                    autoFocus
+                    className={`input ${reasonError ? "error" : ""}`}
+                    value={reason}
+                    onChange={(e) => {
+                      setReason(e.target.value);
+                      setReasonError(false);
+                    }}
+                    placeholder="For example: the claim about pricing is not something we can promise"
+                  />
+                  {reasonError && <div className="field-error">Add a reason to reject this action.</div>}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button type="button" className="btn btn-danger" onClick={reject}>Confirm rejection</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => { setRejecting(false); setReasonError(false); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

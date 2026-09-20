@@ -7,7 +7,7 @@ import LoadState from "../components/ui/LoadState.jsx";
 import { getComparison } from "../services/api.js";
 import AgentPerformance from "../components/analytics/AgentPerformance.jsx";
 
-const money = (n) => (n == null ? "n/a" : `$${n.toFixed(n < 0.1 ? 4 : 2)}`);
+const money = (n) => (n == null ? "n/a" : `$${n.toFixed(2)}`);
 const pct = (n) => (n == null ? "n/a" : `${n}%`);
 const num = (n) => (n == null ? "n/a" : n.toLocaleString());
 
@@ -16,7 +16,7 @@ const SECTIONS = [
   ["Results", [
     ["Prospects discovered", "prospects", num, "high"],
     ["Qualified", "qualified", num, "high"],
-    ["Contacted", "contacted", num, "high"],
+    ["Prospects contacted", "contacted", num, "high"],
     ["Replies", "replies", num, "high"],
     ["Meetings booked", "meetings", num, "high"],
   ]],
@@ -35,14 +35,6 @@ const SECTIONS = [
     ["Failed steps", "failed", num, "low"],
   ]],
 ];
-
-function bestIndex(rows, field, better) {
-  const values = rows.map((r) => r[field]);
-  const numeric = values.filter((v) => typeof v === "number");
-  if (numeric.length < 2 || new Set(numeric).size < 2) return -1; // nothing to highlight if there is no difference
-  const best = better === "high" ? Math.max(...numeric) : Math.min(...numeric);
-  return values.indexOf(best);
-}
 
 // Campaigns side by side (PS: how do managers compare performance across campaigns, and a campaign against a variant of it).
 export default function Compare({ params = {} }) {
@@ -72,7 +64,7 @@ export default function Compare({ params = {} }) {
           </div>
           <div className="field-hint">
             To test a change, duplicate a campaign, change one thing in the copy (a prompt, the channels, the qualification criteria), launch both and compare them here.
-            The best value in each row is highlighted.
+            Only Prospects contacted is marked, as the one result that shows the SDR is reaching people.
           </div>
         </div>
 
@@ -87,8 +79,7 @@ export default function Compare({ params = {} }) {
                   {rows.map((r) => (
                     <th key={r.id} style={{ minWidth: 150 }}>
                       <button type="button" className="link" style={{ fontWeight: 700 }} onClick={() => navigate("campaignDetail", { id: r.id })}>{r.name}</button>
-                      <div style={{ marginTop: 4 }}><StatusBadge status={r.status} /></div>
-                      {r.copiedFrom && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>copy of {(all.find((x) => x.id === r.copiedFrom) || {}).name || "another campaign"}</div>}
+                      {r.copiedFrom && <div style={{ fontSize: 11.5, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-2)", marginTop: 3 }}>copy of {(all.find((x) => x.id === r.copiedFrom) || {}).name || "another campaign"}</div>}
                     </th>
                   ))}
                 </tr>
@@ -96,15 +87,25 @@ export default function Compare({ params = {} }) {
               <tbody>
                 {SECTIONS.map(([title, fields]) => (
                   <React.Fragment key={title}>
-                    <tr><td colSpan={rows.length + 1} style={{ background: "var(--neutral-soft)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)" }}>{title}</td></tr>
-                    {fields.map(([label, field, fmt, better]) => {
-                      const best = bestIndex(rows, field, better);
+                    {/* The section heading row. For Results it also carries each campaign's completion status, so the two sit on one row. */}
+                    <tr>
+                      <td style={{ background: "var(--neutral-soft)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-2)" }}>
+                        {title === "Results" ? "Results and status" : title}
+                      </td>
+                      {rows.map((r) => (
+                        <td key={r.id} style={{ background: "var(--neutral-soft)" }}>
+                          {title === "Results" && <StatusBadge status={r.status} label={r.status === "live" ? "ONGOING" : undefined} />}
+                        </td>
+                      ))}
+                    </tr>
+                    {fields.map(([label, field, fmt]) => {
+                      const marked = field === "contacted"; // the only value shown in green
                       return (
                         <tr key={field}>
-                          <td>{label}</td>
-                          {rows.map((r, i) => (
-                            <td key={r.id} style={i === best ? { fontWeight: 700, color: "var(--success)" } : undefined}>
-                              {fmt(r[field])}{i === best ? " ✓" : ""}
+                          <td style={{ color: "var(--text-2)" }}>{label}</td>
+                          {rows.map((r) => (
+                            <td key={r.id} style={marked ? { fontWeight: 700, color: "var(--success)" } : { color: "var(--text-2)" }}>
+                              {fmt(r[field])}{marked ? " \u2713" : ""}
                             </td>
                           ))}
                         </tr>

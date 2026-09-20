@@ -18,7 +18,7 @@ export default function CampaignAgentsPanel({ campaignId, agents, editable }) {
 
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>Agents in this campaign</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Agents in this campaign</div>
       <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>
         Pause one agent here without stopping the rest of the campaign.
       </div>

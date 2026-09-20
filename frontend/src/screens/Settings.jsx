@@ -11,8 +11,6 @@ import { addSuppression, getSettings, setAgentEnabled, setChannelEnabled, setKil
 import { timeAgo } from "../utils/format.js";
 import { validateSuppression } from "../utils/validation.js";
 
-const INTEGRATION_TONE = { connected: "success", idle: "neutral", "not-configured": "warning", problem: "warning", "not-built": "muted" };
-const INTEGRATION_LABEL = { connected: "Connected", idle: "Not in use", "not-configured": "Not set up", problem: "Not working", "not-built": "Not built" };
 const STATUS_LABEL = { running: "Running", paused: "Paused", stopped: "Stopped" };
 
 export default function Settings() {
@@ -54,8 +52,8 @@ export default function Settings() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="dot" style={{ width: 8, height: 8, background: killed ? "var(--danger)" : "var(--success)" }} />
-                <div style={{ fontSize: 14, fontWeight: 700 }}>
-                  {killed ? "Global Kill Switch is active — all outreach is stopped" : "All systems operating normally"}
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                  {killed ? "Global Kill Switch is active - all outreach is stopped" : "All systems operating normally"}
                 </div>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 6, maxWidth: 520 }}>
@@ -115,7 +113,7 @@ export default function Settings() {
         </div>
 
         <div className="card">
-          <div className="section-title-lg" style={{ padding: "20px 22px 12px 22px", marginBottom: 0 }}>Global Suppression / Do-Not-Contact List</div>
+          <div className="section-title-lg" style={{ padding: "20px 18px 12px 18px", marginBottom: 0 }}>Global Suppression / Do-Not-Contact List</div>
           <table>
             <thead>
               <tr><th>Contact / Domain</th><th>Reason</th><th>Added</th></tr>
@@ -133,22 +131,6 @@ export default function Settings() {
             </button>
           </div>
         </div>
-
-        <div className="card" style={{ padding: 22 }}>
-          <div className="section-title-lg">Available Models, Tools &amp; Integrations</div>
-          <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>What this server is actually using, read from its configuration. Anything marked "Not built" is on the roadmap and is simulated today.</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-            {data.integrations.map((i) => (
-              <div key={i.name} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{i.name}</div>
-                  <Badge tone={INTEGRATION_TONE[i.state]}>{INTEGRATION_LABEL[i.state]}</Badge>
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>{i.kind}: {i.note}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {confirming && (
@@ -159,7 +141,7 @@ export default function Settings() {
           danger
           onConfirm={() => {
             setConfirming(false);
-            guard(() => setKillSwitch(true), "Global Kill Switch activated — all outreach stopped");
+            guard(() => setKillSwitch(true), "Global Kill Switch activated - all outreach stopped");
           }}
           onCancel={() => setConfirming(false)}
         />

@@ -20,7 +20,7 @@ export default function CampaignActivity({ activity, outcomes }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Agent Activity</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Agent Activity</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           <Stat label="In flight" value={activity.inFlight} />
           <Stat label="Completed" value={activity.completed} />
@@ -34,7 +34,7 @@ export default function CampaignActivity({ activity, outcomes }) {
       </div>
 
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Outcomes</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Outcomes</div>
         {outcomes.total === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-2)" }}>No replies yet.</div>
         ) : (
