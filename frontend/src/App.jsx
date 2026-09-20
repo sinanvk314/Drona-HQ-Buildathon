@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { NavContext } from "./components/shell/NavContext.jsx";
 import { ToastProvider } from "./components/ui/Toast.jsx";
-import { startActivitySimulation } from "./services/api.js";
 import CommandCenter from "./screens/CommandCenter.jsx";
 import CreateCampaign from "./screens/CreateCampaign.jsx";
 import CampaignDetail from "./screens/CampaignDetail.jsx";
@@ -57,8 +56,6 @@ export default function App() {
     }
     setRoute(next);
   }, []);
-
-  useEffect(() => startActivitySimulation(), []);
 
   const value = useMemo(() => ({ route, navigate }), [route, navigate]);
   const Screen = SCREENS[route.name] || CommandCenter;

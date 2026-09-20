@@ -1,5 +1,17 @@
 # Autonomous SDR — control plane + agent intelligence layer
 
+> ## ⚠️ Reminders (read before sharing the live URL)
+>
+> 1. **`APP_ACCESS_CODE` is NOT set yet.** Until it is, the live site has no protection: anyone with the URL can sign in with any
+>    name and operate the campaigns. Set `APP_ACCESS_CODE` (a code you give the judges) and `AUTH_SECRET` (any long random string)
+>    in the host's environment settings, then let it redeploy. See [section 12 of the system guide](docs/SYSTEM_GUIDE.md#12-sign-in).
+> 2. **Gemini free quota is limited** and resets daily. Keep `LLM_DAILY_CALL_CAP` set, pause campaigns when you are not demoing,
+>    and if it runs out, put a key from a *different Google project* in `GEMINI_API_KEY`. The app keeps working on the rule engine.
+> 3. **Regenerate the DronaHQ webhook API key** if it was ever pasted anywhere (it appears in DronaHQ's trace logs).
+>
+> **New developer? Start here:** [System guide](docs/SYSTEM_GUIDE.md) explains how everything works in plain words, and the
+> [Roadmap](docs/ROADMAP.md) lists what is not built yet and where to start in the code.
+
 Built for the 51-hour Inter Guild Buildathon (Tech Contingent IIT Madras × DronaHQ).
 
 An autonomous, multi-channel SDR system in two halves that work as one product:
@@ -12,6 +24,8 @@ An autonomous, multi-channel SDR system in two halves that work as one product:
   knowledge base, with every decision written to a Decision Journal.
 
 ## Contents
+
+Deeper documents: [System guide](docs/SYSTEM_GUIDE.md) (how everything works) and [Roadmap](docs/ROADMAP.md) (what is not built yet).
 
 1. [How it works](#1-how-it-works)
 2. [Repository layout](#2-repository-layout)
@@ -131,7 +145,8 @@ backend/             Node + Express API and the autonomous scheduler
 matching-service/    REFERENCE CODE, not used by the running app. A standalone Python/FastAPI service (triage, contact
                      match, reply classify) plus a Python orchestrator. Its reply routing and embedding retrieval now
                      run inside the Node backend; the rest is kept as a tested reference for sourcing at scale.
-docs/dronahq/        The DronaHQ ICP agent's instructions and the response schemas we tried against its webhook
+docs/                SYSTEM_GUIDE.md (how it all works), ROADMAP.md (what to build next), and dronahq/ (the DronaHQ ICP agent's
+                     instructions and the response schemas we tried against its webhook)
 ```
 
 Detailed per-folder notes and the API table are in [`backend/README.md`](backend/README.md).
