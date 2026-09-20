@@ -64,7 +64,7 @@ test("the campaign system prompt is versioned per campaign and can be rolled bac
   const other = promptFor("icp", "c_ai_founders").text;
   const original = campaign("c_us_saas").systemPrompt.versions[0].text;
 
-  const { version } = data.saveCampaignSystemPrompt("c_us_saas", "Only ever mention cloud cost, never security.");
+  const { version } = data.saveCampaignSystemPrompt("c_us_saas", "Only ever mention cloud cost, never security.", "Focus on cost");
   assert.equal(version, 2);
   assert.match(promptFor("icp", "c_us_saas").text, /Only ever mention cloud cost/);
   assert.match(promptFor("icp", "c_us_saas").harness, /campaign prompt v2/);
@@ -87,12 +87,12 @@ test("an override belongs to one campaign and can be removed", () => {
 });
 
 test("a duplicate starts with the same prompts and then diverges independently", () => {
-  data.saveCampaignSystemPrompt("c_ai_founders", "Founders variant A prompt.");
+  data.saveCampaignSystemPrompt("c_ai_founders", "Founders variant A prompt.", "Variant A");
   const { id } = data.duplicateCampaign("c_ai_founders");
   assert.deepEqual(campaign(id).promptPins, campaign("c_ai_founders").promptPins);
   assert.match(promptFor("icp", id).text, /Founders variant A prompt/);
 
-  data.saveCampaignSystemPrompt(id, "Founders variant B prompt.");
+  data.saveCampaignSystemPrompt(id, "Founders variant B prompt.", "Variant B");
   assert.match(promptFor("icp", id).text, /variant B/);
   assert.match(promptFor("icp", "c_ai_founders").text, /variant A/, "the original is unchanged");
 });
@@ -109,4 +109,19 @@ test("the campaign page gets everything it needs to manage prompts", () => {
 test("an archived campaign's prompts cannot be edited", () => {
   data.archiveCampaign("c_india_bfsi");
   assert.throws(() => data.saveCampaignSystemPrompt("c_india_bfsi", "x y z"), /archived/);
+});
+
+test("a prompt change needs a message, is kept with it, and an old decision's prompt can be rebuilt from its harness label", () => {
+  assert.throws(() => data.saveCampaignSystemPrompt("c_us_saas", "Some new text."), /Describe what you changed/);
+  const { version } = data.saveCampaignSystemPrompt("c_us_saas", "Third wording of the brief.", "Shorter and warmer");
+  const c = data.getCampaign("c_us_saas");
+  assert.equal(c.prompts.system.versions.find((v) => v.version === version).message, "Shorter and warmer");
+  assert.match(c.prompts.log[0].text, /Shorter and warmer/);
+
+  const now = data.inspectPrompt("c_us_saas", "personalisation");
+  assert.equal(now.parts[0].label, `Campaign prompt v${version}`);
+  const then = data.inspectPrompt("c_us_saas", "personalisation", "v1.0 + campaign prompt v1");
+  assert.match(then.parts[0].label, /Campaign prompt v1$/);
+  assert.notEqual(then.parts[0].text, now.parts[0].text, "the earlier wording is what is shown");
+  assert.throws(() => data.inspectPrompt("c_us_saas", "nope"), /Agent not found/);
 });

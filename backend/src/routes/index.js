@@ -6,6 +6,7 @@ import { asyncRoute } from "../middleware/errors.js";
 import * as data from "../services/data.js";
 import { authConfig, login, me } from "../services/auth.js";
 import * as dev from "../services/dev.js";
+import { getPerformance } from "../services/performance.js";
 
 export const router = Router();
 
@@ -29,7 +30,8 @@ router.get("/campaigns/:id", asyncRoute(async (req, res) => res.json(data.getCam
 router.get("/campaigns/:id/config", asyncRoute(async (req, res) => res.json(data.getCampaignConfig(req.params.id))));
 router.put("/campaigns/:id", asyncRoute(async (req, res) => res.json(data.updateCampaign(req.params.id, (req.body || {}).values || {}))));
 router.post("/campaigns/:id/prompts/pins", asyncRoute(async (req, res) => res.json(data.setCampaignPin(req.params.id, (req.body || {}).agentId, (req.body || {}).version))));
-router.post("/campaigns/:id/prompts/system", asyncRoute(async (req, res) => res.json(data.saveCampaignSystemPrompt(req.params.id, (req.body || {}).text))));
+router.post("/campaigns/:id/prompts/system", asyncRoute(async (req, res) => res.json(data.saveCampaignSystemPrompt(req.params.id, (req.body || {}).text, (req.body || {}).message))));
+router.get("/campaigns/:id/prompts/inspect", asyncRoute(async (req, res) => res.json(data.inspectPrompt(req.params.id, String(req.query.agentId || ""), String(req.query.harness || "")))));
 router.post("/campaigns/:id/prompts/system/:version/activate", asyncRoute(async (req, res) => res.json(data.activateCampaignSystemPrompt(req.params.id, req.params.version))));
 router.post("/campaigns/:id/prompts/overrides", asyncRoute(async (req, res) => res.json(data.setCampaignOverride(req.params.id, (req.body || {}).agentId, (req.body || {}).text))));
 router.post("/campaigns/:id/agents/:agentId", asyncRoute(async (req, res) => res.json(data.setCampaignAgentEnabled(req.params.id, req.params.agentId, !!(req.body || {}).enabled))));
@@ -45,6 +47,7 @@ router.post("/campaigns/:id/launch", asyncRoute(async (req, res) => res.json(dat
 router.post("/campaigns/:id/complete", asyncRoute(async (req, res) => res.json(data.completeCampaign(req.params.id))));
 router.post("/campaigns/:id/archive", asyncRoute(async (req, res) => res.json(data.archiveCampaign(req.params.id))));
 
+router.get("/performance", asyncRoute(async (req, res) => res.json(getPerformance())));
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
 
 // ---- Dev tab: sandbox with a real person as the prospect, search playground, real-data tests, runtime ------------

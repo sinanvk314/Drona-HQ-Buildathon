@@ -7,6 +7,7 @@ import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { decideApproval, editApproval, getProspect } from "../services/api.js";
 import { initials, timeAgo } from "../utils/format.js";
+import PromptInspector, { AGENT_IDS } from "../components/campaign/PromptInspector.jsx";
 
 const CARD = { padding: 20 };
 const ringColor = (s) => (s >= 80 ? "var(--success)" : s >= 60 ? "var(--warning)" : "var(--danger)");
@@ -17,6 +18,7 @@ export default function ProspectDetail({ params }) {
   const toast = useToast();
   const { data: p, error } = useApi(() => getProspect(params.id), [params.id]);
   const [editing, setEditing] = useState(false);
+  const [inspect, setInspect] = useState(null);
   const [editText, setEditText] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
@@ -162,6 +164,9 @@ export default function ProspectDetail({ params }) {
                 {p.dossier.notes.map((n, i) => (
                   <div key={i} style={{ fontSize: 12.5, padding: "5px 0", lineHeight: 1.5, borderTop: i ? "1px solid var(--border)" : "none" }}>
                     <strong>{n.agent}</strong> <span style={{ color: "var(--text-3)" }}>{n.harness ? `· ${n.harness}` : ""}</span>
+                    {AGENT_IDS[n.agent] && n.harness && n.harness !== "policy" && (
+                      <button type="button" className="link" style={{ marginLeft: 8, fontSize: 12 }} onClick={() => setInspect({ agentId: AGENT_IDS[n.agent], harness: n.harness })}>View prompt</button>
+                    )}
                     <div style={{ color: "var(--text-2)" }}>{n.note}</div>
                   </div>
                 ))}
@@ -320,6 +325,7 @@ export default function ProspectDetail({ params }) {
           </div>
         </div>
       </div>
+      {inspect && p.campaign && <PromptInspector campaignId={p.campaign.id} agentId={inspect.agentId} harness={inspect.harness} onClose={() => setInspect(null)} />}
     </Shell>
   );
 }

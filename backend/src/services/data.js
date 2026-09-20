@@ -1043,15 +1043,18 @@ export function setCampaignPin(campaignId, agentId, version) {
   });
 }
 
-export function saveCampaignSystemPrompt(campaignId, text) {
+export function saveCampaignSystemPrompt(campaignId, text, message = "") {
   return withState((s) => {
     const c = promptCampaign(s, campaignId);
     if (!text || !text.trim()) throw new Error("The campaign prompt cannot be empty.");
+    // Like a commit message: say what changed and why, so the history explains itself and a bad change can be traced.
+    const note = String(message || "").trim().slice(0, 200);
+    if (note.length < 3) throw Object.assign(new Error("Describe what you changed and why."), { fields: { message: "Describe what you changed and why." } });
     const next = Math.max(...c.systemPrompt.versions.map((v) => v.version)) + 1;
-    c.systemPrompt.versions.push({ version: next, text: text.trim(), by: currentUser(), ts: Date.now() });
+    c.systemPrompt.versions.push({ version: next, text: text.trim(), by: currentUser(), ts: Date.now(), message: note });
     c.systemPrompt.active = next;
     c.modifiedTs = Date.now();
-    logPromptChange(c, currentUser(), `Campaign system prompt saved as v${next}`);
+    logPromptChange(c, currentUser(), `Campaign prompt v${next}: ${note}`);
     addEvent(s, { campaignId, type: "edit", text: `${currentUser()} saved campaign prompt v${next} for **${c.name}**`, featured: false });
     return { version: next };
   });
@@ -1140,3 +1143,33 @@ export function addSuppression({ contact, reason }) {
 
 // Re-exported so the scheduler can run the same conflict check the routes would.
 export { checkConflict };
+
+
+/**
+ * The prompt an agent ran with, rebuilt from the versions named in a harness label such as "v1.2 + campaign prompt v3".
+ * Without a harness it is what the agent would receive right now. Library and campaign prompt versions are never
+ * overwritten, so an old decision's prompt can be shown exactly; a campaign's override is shown as it is today.
+ */
+export function inspectPrompt(campaignId, agentId, harness = "") {
+  const s = getState();
+  const c = campaignOf(s, campaignId);
+  const agent = s.agents.find((a) => a.id === agentId);
+  if (!agent) throw new Error("Agent not found.");
+  const m = /^(\S+?)(?: \+ campaign prompt v(\d+))?$/.exec(String(harness || "").trim());
+  const agentVersion = (m && agent.versions.find((v) => v.version === m[1])) || pinnedVersion(agent, c);
+  const systemVersion = (m && m[2] && c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === Number(m[2]))) || (c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === c.systemPrompt.active));
+  const persona = c.persona;
+  const voice = persona && (persona.tone || persona.signOff)
+    ? `Voice: ${[persona.tone && `write ${persona.tone}`, persona.signOff && `sign off as "${persona.signOff}"`].filter(Boolean).join("; ")}.` : "";
+  const override = agent.overrides.find((o) => o.campaignId === c.id);
+  return {
+    agent: agent.title, agentId, campaign: c.name, exact: !!m && !!agent.versions.find((v) => v.version === (m && m[1])),
+    parts: [
+      systemVersion && { label: `Campaign prompt v${systemVersion.version}`, text: systemVersion.text },
+      voice && { label: "Persona voice (current)", text: voice },
+      agentVersion && { label: `${agent.title} prompt ${agentVersion.version}`, text: agentVersion.text },
+      override && { label: "This campaign's extra instruction for this agent (current)", text: override.text },
+    ].filter(Boolean),
+    fixed: "Every agent also receives the platform guardrails and escalation rules, the prospect's dossier, and any knowledge it retrieved. Those are added at run time.",
+  };
+}

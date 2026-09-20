@@ -6,6 +6,9 @@ import {
 } from "../../services/api.js";
 import { timeAgo } from "../../utils/format.js";
 import PromptDiff from "./PromptDiff.jsx";
+import PromptInspector from "./PromptInspector.jsx";
+import { useApi } from "../../hooks/useApi.js";
+import { getPerformance } from "../../services/api.js";
 
 // This campaign's prompts and harness (PS: prompt/harness management). Everything here belongs to this campaign
 // alone: its own system prompt (versioned, roll-back-able), which shared-library version each agent runs, and its
@@ -16,6 +19,12 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
   const [text, setText] = useState("");
   const [compareWith, setCompareWith] = useState(null);
   const [override, setOverride] = useState(null); // { agentId, text }
+  const [message, setMessage] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [inspect, setInspect] = useState(null);
+  const { data: perf } = useApi(() => getPerformance(), [], { pollMs: 60000 });
+  const health = perf && perf.campaigns.find((c) => c.id === campaignId);
+  const versionRows = perf ? (perf.agents.find((a) => a.id === "personalisation").rows || []).filter((r) => r.campaignId === campaignId) : [];
 
   const { system } = prompts;
   const active = system.versions.find((v) => v.version === system.active);
@@ -36,6 +45,14 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
         Belongs to this campaign only. Changing it never changes another campaign, and every change is recorded below.
       </div>
 
+      {health && (health.status === "struggling" || health.status === "watch") && (
+        <div style={{ background: "var(--danger-soft)", border: "1px solid #F2C7C7", borderRadius: 10, padding: "12px 14px", marginBottom: 14, fontSize: 12.5, lineHeight: 1.6 }}>
+          <strong>This campaign is not going well.</strong>
+          <ul style={{ margin: "4px 0 4px 16px", padding: 0 }}>{health.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          {health.suggestion}{editable && !editing ? " Edit the campaign prompt below: every change is kept as a version you can compare and roll back." : ""}
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>Campaign system prompt · v{system.active}</div>
         {editable && !editing && (
@@ -45,11 +62,17 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
       {editing ? (
         <>
           <textarea className="input" aria-label="Campaign system prompt" rows={5} value={text} onChange={(e) => setText(e.target.value)} />
+          <label className="field-label" htmlFor="pm-message" style={{ marginTop: 10 }}>What did you change, and why?</label>
+          <input id="pm-message" className={`input ${messageError ? "error" : ""}`} value={message} placeholder="A short note for the history, like a commit message" onChange={(e) => { setMessage(e.target.value); setMessageError(""); }} />
+          {messageError ? <div className="field-error">{messageError}</div> : <div className="field-hint">Kept with this version, so later you can see which change helped and which did not.</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => guard(async () => { await saveCampaignSystemPrompt(campaignId, text); setEditing(false); }, "Saved as a new version of this campaign's prompt")}
+              onClick={async () => {
+                if (message.trim().length < 3) { setMessageError("Describe what you changed and why."); return; }
+                await guard(async () => { await saveCampaignSystemPrompt(campaignId, text, message); setEditing(false); setMessage(""); }, "Saved as a new version of this campaign's prompt");
+              }}
             >
               Save as v{Math.max(...system.versions.map((v) => v.version)) + 1}
             </button>
@@ -68,6 +91,13 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
           <span key={v.version} style={{ display: "inline-flex", gap: 6, alignItems: "center", border: "1px solid var(--border)", borderRadius: 999, padding: "3px 10px" }}>
             <strong>v{v.version}</strong>
             <span style={{ color: "var(--text-3)" }}>{v.by} · {timeAgo(v.ts)}</span>
+            <span style={{ color: "var(--text-2)" }}>{v.message ? `"${v.message}"` : "initial version"}</span>
+            {(() => {
+              const rows = versionRows.filter((r) => r.brief === `v${v.version}`);
+              const measured = rows.reduce((t, r) => t + r.measured, 0);
+              const won = rows.reduce((t, r) => t + r.succeeded, 0);
+              return measured ? <span title="Personalisation: opening messages that got a reply" style={{ color: "var(--text-3)" }}>{Math.round((won / measured) * 100)}% replied ({won}/{measured})</span> : null;
+            })()}
             {v.version === system.active ? (
               <Tag tone="accent">active</Tag>
             ) : (
@@ -112,6 +142,7 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
                 >
                   {a.versions.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
                 </select>
+                <button type="button" className="link" style={{ marginLeft: 8, fontSize: 12 }} onClick={() => setInspect({ agentId: a.agentId })}>View prompt</button>
                 {a.pinned !== a.latest && <span style={{ marginLeft: 8, fontSize: 11.5, color: "var(--text-3)" }}>library default is {a.latest}</span>}
               </td>
               <td>
@@ -148,6 +179,7 @@ export default function CampaignPromptsPanel({ campaignId, prompts, editable }) 
           <span style={{ color: "var(--text-3)" }}>{timeAgo(l.ts)}</span>
         </div>
       ))}
+      {inspect && <PromptInspector campaignId={campaignId} agentId={inspect.agentId} harness={inspect.harness} onClose={() => setInspect(null)} />}
     </div>
   );
 }

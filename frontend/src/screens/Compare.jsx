@@ -5,6 +5,7 @@ import { StatusBadge } from "../components/ui/Badge.jsx";
 import { useApi } from "../hooks/useApi.js";
 import LoadState from "../components/ui/LoadState.jsx";
 import { getComparison } from "../services/api.js";
+import AgentPerformance from "../components/analytics/AgentPerformance.jsx";
 
 const money = (n) => (n == null ? "n/a" : `$${n.toFixed(n < 0.1 ? 4 : 2)}`);
 const pct = (n) => (n == null ? "n/a" : `${n}%`);
@@ -115,6 +116,7 @@ export default function Compare({ params = {} }) {
             </table>
           </div>
         )}
+        <AgentPerformance />
       </div>
     </Shell>
   );
