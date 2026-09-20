@@ -10,7 +10,7 @@
 // failure (missing key, 429, timeout, blocked or malformed output) throws; agentEngine/index.js
 // then moves to the next engine in the AGENT_ENGINE chain, ending at the rule engine.
 import { config, geminiModels } from "../../config.js";
-import { capReached, recordLlmCall } from "../usage.js";
+import { capReached, recordLlmCall, recordLlmUsage } from "../usage.js";
 import {
   campaignBlock,
   dossierFor,
@@ -124,12 +124,13 @@ async function throttle() {
   if (start > now) await new Promise((resolve) => setTimeout(resolve, start - now));
 }
 
-async function generateOnce({ system, input, schema }, model) {
+async function generateOnce({ system, input, schema, agent }, model) {
   const g = config.gemini;
   if (!g.apiKey) throw new GeminiError("GEMINI_API_KEY is not set");
   if (capReached()) throw new GeminiError(`daily LLM call cap reached (LLM_DAILY_CALL_CAP=${config.llmDailyCallCap})`);
   await throttle();
   recordLlmCall(model); // every request counts against Google's quota, retries included
+  const startedAt = Date.now();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), g.timeoutMs);
@@ -169,7 +170,10 @@ async function generateOnce({ system, input, schema }, model) {
     if (data?.promptFeedback?.blockReason) throw new GeminiError(`request blocked: ${data.promptFeedback.blockReason}`);
     const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
     if (!text.trim()) throw new GeminiError(`empty response (finishReason: ${data?.candidates?.[0]?.finishReason || "unknown"})`);
-    return parseAgentOutput(text);
+    const output = parseAgentOutput(text);
+    // Only a request that produced usable output counts as an agent decision; tokens and latency feed the cost figures.
+    recordLlmUsage({ agent, tokensIn: data?.usageMetadata?.promptTokenCount, tokensOut: data?.usageMetadata?.candidatesTokenCount, ms: Date.now() - startedAt });
+    return output;
   } catch (e) {
     if (e instanceof GeminiError) throw e;
     if (e.name === "AbortError") throw new GeminiError(`timed out after ${g.timeoutMs}ms`);
@@ -223,13 +227,13 @@ const baseInput = (campaign, prospect, promptText, knowledge) => ({
 });
 
 export async function geminiScoreICP({ campaign, prospect, promptText, knowledge }) {
-  const out = await generate({ system: ICP_SYSTEM, input: baseInput(campaign, prospect, promptText, knowledge), schema: ICP_SCHEMA });
+  const out = await generate({ agent: "icp", system: ICP_SYSTEM, input: baseInput(campaign, prospect, promptText, knowledge), schema: ICP_SCHEMA });
   return normalizeICP(out);
 }
 
 export async function geminiDraftOutreach({ campaign, prospect, promptText, override, knowledge }) {
   const input = { ...baseInput(campaign, prospect, promptText, knowledge), campaign_override: override || null };
-  const out = await generate({ system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign) });
+  const out = await generate({ agent: "personalisation", system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign) });
   return normalizeDraft(out, campaign);
 }
 
@@ -239,6 +243,6 @@ export async function geminiHandleConversation({ campaign, prospect, promptText,
     conversation: prospect.conversation || [],
     campaign_override: override || null,
   };
-  const out = await generate({ system: CONVERSATION_SYSTEM, input, schema: CONVERSATION_SCHEMA });
+  const out = await generate({ agent: "conversation", system: CONVERSATION_SYSTEM, input, schema: CONVERSATION_SCHEMA });
   return normalizeConversation(out);
 }

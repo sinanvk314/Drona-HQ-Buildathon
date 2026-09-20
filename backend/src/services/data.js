@@ -73,6 +73,28 @@ function transition(s, id, to, eventText) {
 
 // ---------------------------------------------------------------- reads
 
+// Today's LLM usage plus what it cost per unit of work. Only decisions made by the running system count
+// (they carry an `engine` field); seeded demo history does not.
+function efficiencyFor(s) {
+  const usage = getUsage();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const today = s.decisions.filter((d) => d.engine && d.ts >= startOfDay.getTime());
+  const qualified = today.filter((d) => d.kind === "qualified").length;
+  const scored = today.filter((d) => d.kind === "qualified" || d.kind === "rejected").length;
+  const conversation = usage.byAgent.find((a) => a.agent === "conversation");
+  const per = (cost, n) => (n ? Number((cost / n).toFixed(6)) : null);
+  return {
+    ...usage,
+    unitCosts: {
+      perProspectScored: per(usage.estCostUsd, scored),
+      perQualifiedLead: per(usage.estCostUsd, qualified),
+      perConversation: conversation ? per(conversation.estCostUsd, conversation.decisions) : null,
+    },
+    counts: { prospectsScored: scored, qualified },
+  };
+}
+
 export function getShellState() {
   const s = getState();
   return { killSwitch: s.killSwitch.active, pendingApprovals: pendingApprovals(s).length };
@@ -101,7 +123,7 @@ export function getCommandCenter() {
       { label: "Active Campaigns", value: live + paused, sub: s.killSwitch.active ? "Kill Switch active" : activeSub.join(" · "), tone: "neutral", dot: !s.killSwitch.active },
     ],
     approvals: { count: pending.length, escalated: pending.filter((a) => a.type === "escalation").length },
-    efficiency: getUsage(),
+    efficiency: efficiencyFor(s),
     campaigns: cs.map((c) => cardOf(s, c)),
     funnel: STAGE_KEYS.map((k) => ({ key: k, label: STAGE_LABELS[k], value: sum(k) })),
     feed: s.events

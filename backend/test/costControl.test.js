@@ -9,7 +9,7 @@ import path from "path";
 // Counters go to a temp file so running the tests never touches the real dashboard numbers.
 process.env.USAGE_FILE = path.join(os.tmpdir(), `usage-test-${process.pid}.json`);
 const { config } = await import("../src/config.js");
-const { capReached, getUsage, recordAvoided, recordLlmCall } = await import("../src/services/usage.js");
+const { capReached, getUsage, recordAvoided, recordLlmCall, recordLlmUsage } = await import("../src/services/usage.js");
 const { classifyReply } = await import("../src/services/replyRouter.js");
 const { retrieve } = await import("../src/services/rag.js");
 const { scoreICP } = await import("../src/services/agentEngine/index.js");
@@ -37,6 +37,22 @@ test("avoided decisions are counted by reason and priced", () => {
   assert.equal(after.avoided.replyRouting, before.avoided.replyRouting + 1);
   assert.equal(after.avoidedTotal, before.avoidedTotal + 1);
   assert.ok(after.estSavedUsd >= before.estSavedUsd);
+});
+
+test("tokens and latency are tracked per agent and priced", () => {
+  const before = getUsage();
+  recordLlmUsage({ agent: "icp", tokensIn: 2000, tokensOut: 300, ms: 1200 });
+  recordLlmUsage({ agent: "icp", tokensIn: 1000, tokensOut: 100, ms: 800 });
+  const after = getUsage();
+  const icp = after.byAgent.find((a) => a.agent === "icp");
+  const icpBefore = before.byAgent.find((a) => a.agent === "icp") || { tokensIn: 0, tokensOut: 0, decisions: 0 };
+  assert.equal(icp.tokensIn - icpBefore.tokensIn, 3000);
+  assert.equal(icp.tokensOut - icpBefore.tokensOut, 400);
+  assert.equal(icp.decisions - icpBefore.decisions, 2);
+  assert.ok(icp.avgLatencyMs > 0);
+  // With real token counts, cost is tokens x price (not the flat per-call fallback).
+  const expected = (after.tokensIn * config.estCostPerMTokIn + after.tokensOut * config.estCostPerMTokOut) / 1e6;
+  assert.ok(Math.abs(after.estCostUsd - expected) < 1e-6, `${after.estCostUsd} vs ${expected}`);
 });
 
 test("clear-cut replies are routed without an LLM; judgment replies are not", async () => {

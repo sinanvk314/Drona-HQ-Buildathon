@@ -79,7 +79,11 @@ export const config = {
   // "off" never loads the embedding model (saves ~300MB of RAM on small hosts). Retrieval then uses keyword
   // search and reply routing sends every reply to the Conversation Agent.
   embeddingsEnabled: (process.env.EMBEDDINGS || "on").toLowerCase() !== "off",
-  // Rough $ per LLM call, only used for the "cost saved" figure on the dashboard.
+  // Cost estimates for the dashboard. With token counts from the provider the cost is tokens x these prices
+  // (USD per million tokens; set them to your model's real prices). EST_COST_PER_LLM_CALL is the fallback when
+  // no token counts are available.
+  estCostPerMTokIn: Number(process.env.EST_COST_PER_MTOK_IN) || 0.1,
+  estCostPerMTokOut: Number(process.env.EST_COST_PER_MTOK_OUT) || 0.4,
   estCostPerLlmCall: Number(process.env.EST_COST_PER_LLM_CALL) || 0.0015,
 };
 
