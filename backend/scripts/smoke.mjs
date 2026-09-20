@@ -55,16 +55,23 @@ if (live.length < 2) {
 } else if (cc.body.killSwitch) {
   console.log("\n  SKIP  the global kill switch is on, so nothing is running");
 } else {
-  const [target, other] = live;
-  console.log(`\nPausing "${target.name}" for ${waitMs / 1000}s while "${other.name}" keeps running...`);
-  const before = { target: await prospectsOf(target.id), other: await prospectsOf(other.id) };
+  const [target, ...others] = live;
+  console.log(`
+Pausing "${target.name}" for ${waitMs / 1000}s while ${others.length} other Live campaign${others.length === 1 ? "" : "s"} keep running...`);
+  const before = { target: await prospectsOf(target.id) };
+  for (const o of others) before[o.id] = await prospectsOf(o.id);
   const paused = await call(`/api/campaigns/${target.id}/pause`, { method: "POST", body: "{}" });
   check(paused.status === 200 && paused.body?.status === "paused", "campaign paused");
   try {
     await sleep(waitMs);
-    const after = { target: await prospectsOf(target.id), other: await prospectsOf(other.id) };
+    const after = { target: await prospectsOf(target.id) };
+    for (const o of others) after[o.id] = await prospectsOf(o.id);
     check(after.target === before.target, "paused campaign made no progress", `${before.target} -> ${after.target}`);
-    check(after.other > before.other, "other Live campaign kept running", `${before.other} -> ${after.other}`);
+    // A one-person campaign has a single prospect and waits for a human, so it cannot grow. The check is that at least one
+    // other campaign that can grow did.
+    const grew = others.filter((o) => after[o.id] > before[o.id]);
+    for (const o of others) console.log(`        ${o.name}: ${before[o.id]} -> ${after[o.id]}`);
+    check(grew.length > 0, "another Live campaign kept running", grew.length ? grew.map((o) => o.name).join(", ") : "none of the others gained prospects: they may be one-person or real campaigns waiting for approval, so make sure at least one ordinary audience campaign is Live");
   } finally {
     const resumed = await call(`/api/campaigns/${target.id}/resume`, { method: "POST", body: "{}" });
     check(resumed.status === 200 && resumed.body?.status === "live", "campaign resumed (state restored)");
