@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/dronahqEngine.test.js test/geminiEngine.test.js",
+    "test": "node --test test/dronahqEngine.test.js test/geminiEngine.test.js test/costControl.test.js",
     "reset-data": "node -e \"import('./src/db/index.js').then(m => m.resetState()).then(() => { console.log('State reset to seed.'); process.exit(0); })\""
   },
   "dependencies": {
@@ -16,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "fastembed": "^2.1.0",
     "pg": "^8.13.1"
   }
 }

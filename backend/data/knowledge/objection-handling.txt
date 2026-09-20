@@ -1,0 +1,26 @@
+Objection Handling Playbook
+
+Objection: "How does pricing work?"
+Response guidance: Usage-based, starting at $0.02/GB monitored (standard) or $0.03/GB monitored
+for regulated deployments with dedicated tenancy and in-country data residency. Offer to confirm
+exact figures on a call once footprint is known. Do not quote a final number without a call —
+offer a range and next step instead.
+
+Objection: "Can you share your SOC 2 report / where is data stored?"
+Response guidance: NimbusGuard is SOC 2 Type II certified. Data is stored in the region the
+customer selects at onboarding and never leaves that region without explicit configuration. This
+is a compliance-sensitive question — a human should confirm any commitment beyond these public
+facts before it is sent. Offer the security pack and a call with the security lead.
+
+Objection: "We already use [Datadog/Grafana/CloudWatch] — do we have to switch?"
+Response guidance: No rip-and-replace. NimbusGuard reads usage data via read-only APIs and
+surfaces findings inside the dashboards the team already uses.
+
+Objection: "Is this relevant for a regulated bank / NBFC / insurer?"
+Response guidance: Yes — NimbusGuard supports in-country data residency and dedicated tenancy for
+regulated deployments, and is built for teams that need cost visibility without giving up
+compliance control. Reference the customer's specific regulator (e.g. RBI, IRDAI) if known.
+
+General rule: never fabricate a compliance claim, certification, or specific customer name that
+is not explicitly listed in the knowledge base. When a prospect raises a security, pricing, or
+compliance objection, prefer escalating to a human over answering confidently from a guess.

@@ -1,0 +1,20 @@
+Case Study — Kaveri Finserv: Cloud Visibility Without Moving Data
+
+Company: Kaveri Finserv, a mid-size NBFC (~1,800 employees) with a digital-lending platform on
+AWS in the Mumbai region and Datadog for monitoring.
+
+Problem: Cloud spend on the lending platform had grown faster than loan volume, and the risk team
+needed evidence of configuration posture for an upcoming internal audit. Any tool had to keep
+data inside India and get through the vendor-risk process.
+
+What they did: Kaveri deployed NimbusGuard in a dedicated-tenancy, in-country configuration with
+read-only access to a single AWS account first. Findings appeared inside their existing Datadog
+dashboards.
+
+Result: Idle database replicas and over-provisioned node pools were identified in the first three
+weeks, and posture findings were mapped to the checks their risk team already tracked. The
+vendor-risk review ran in parallel with the pilot, so procurement did not delay the start.
+
+Relevant for: NBFCs, banks and insurers running regulated workloads on AWS, Azure or GCP in
+India. Cite Kaveri Finserv by name only for comparable regulated lenders, and never imply a
+regulator endorsed the deployment.

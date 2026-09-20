@@ -1,0 +1,21 @@
+Case Study — Voxwell: Inference Cost for a Voice AI Startup
+
+Company: Voxwell, a voice-agent startup (~35 employees, Series A) running GPU inference and
+streaming speech workloads on AWS with Kubernetes.
+
+Problem: Cloud and GPU spend had grown faster than usage. The founders were watching gross margin
+and did not have a dedicated platform engineer to find the waste.
+
+What they did: Voxwell connected NimbusGuard read-only to their AWS account. No migration and no
+change to their release process were required.
+
+Result: Over-provisioned GPU node pools and idle staging environments were found within the first
+week. The team acted on the recommendations by changing configuration only, and reported a
+double-digit reduction in monthly cloud spend within the first quarter.
+
+Quote (co-founder): "We are a tiny team. Getting a list of exactly what to switch off, without
+touching our stack, was worth it on day one."
+
+Relevant for: AI and voice startups with heavy GPU or inference spend and no dedicated platform
+team. Cite Voxwell by name only for comparable early-stage AI companies. Do not quote a specific
+percentage; the case study reports a range only.

@@ -1,0 +1,28 @@
+Objection Handling Playbook — Regulated BFSI (India)
+
+Objection: "Does the data leave India?"
+Response guidance: No, not by default. The customer chooses the processing and storage region at
+onboarding, and data never leaves that region without explicit configuration. Confirm the region
+the prospect needs. A human must confirm any residency commitment beyond this statement.
+
+Objection: "Are you RBI compliant / certified?"
+Response guidance: Do not claim any RBI or IRDAI certification. State only what is true:
+NimbusGuard is SOC 2 Type II certified and supports in-country data residency and dedicated
+tenancy, which helps customers meet their own regulatory obligations. Escalate to a human and
+offer a call with the security lead.
+
+Objection: "We cannot give a third party access to our cloud accounts."
+Response guidance: Access is read-only via APIs. NimbusGuard cannot change infrastructure or read
+application data. Offer a walkthrough of exactly which permissions are requested.
+
+Objection: "Our procurement and vendor-risk cycle takes months."
+Response guidance: Acknowledge it. Offer the security pack and a scoped pilot on a
+non-production account, so vendor-risk review can run in parallel with the evaluation.
+
+Objection: "What does it cost?"
+Response guidance: Usage-based; regulated deployments start at $0.03/GB monitored. Do not quote a
+final number without a call.
+
+General rule: for any security, compliance, legal or pricing objection from a BFSI prospect,
+prefer escalating to a human over answering from a guess. Never invent a certification, customer
+name or audit result.

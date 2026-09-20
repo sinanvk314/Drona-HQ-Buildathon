@@ -1,0 +1,33 @@
+Sales Playbook — India BFSI CIO / Head of Risk Outreach
+
+ICP definition: CIOs, CTOs and Heads of Risk or Technology at Indian banks, NBFCs and insurers
+with 200-5,000 employees that run workloads on AWS, Azure or GCP regions inside India. Buying
+triggers: a cloud migration announcement, a new digital-lending or UPI product, a regulator
+audit cycle, or a security-team hire. Exclude prospects that are fully on-premises with no cloud
+programme, and any company on the do-not-contact list.
+
+Positioning: These buyers evaluate compliance and data residency before cost. Lead with control:
+in-country data residency, dedicated tenancy, read-only access, and SOC 2 Type II. Then cost
+visibility. Never claim that NimbusGuard itself holds any RBI or IRDAI certification. Say that it
+supports the customer's own compliance programme, and offer the security pack.
+
+Pricing context: regulated-industry deployments (in-country residency, dedicated tenancy) start
+at $0.03/GB monitored. Give the range only after a footprint conversation.
+
+Tone: formal, concise, respectful of seniority. Address by title on first contact where the name
+is unclear. Prefer email and LinkedIn; avoid SMS for first contact with senior BFSI leaders.
+
+Example first email (migration signal):
+Subject: Cloud cost visibility with in-country data residency
+Dear {first_name}, I noticed {company} is expanding its cloud footprint. NimbusGuard gives cost
+and security-posture visibility using read-only APIs, with data processed and stored in the
+region you choose, so it stays in India. It runs alongside your existing monitoring rather than
+replacing it. May I share a short security overview and find a convenient time to speak?
+
+Example LinkedIn message:
+Hi {first_name}, your team's recent digital-lending launch caught my eye. We help regulated
+lenders see cloud cost and posture without moving data out of India. Happy to share a one-page
+overview if useful.
+
+Escalate to a human: any question about a specific regulator's requirements, audit evidence,
+contractual liability, or a request for the SOC 2 report itself.

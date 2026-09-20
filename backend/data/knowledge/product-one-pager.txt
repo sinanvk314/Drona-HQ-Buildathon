@@ -1,0 +1,26 @@
+NimbusGuard — Product One-Pager
+
+What it is: NimbusGuard is a cloud cost and security layer that sits alongside a company's
+existing infrastructure (AWS, GCP or Azure) and existing observability stack (Datadog, Grafana,
+CloudWatch). It does not require a rip-and-replace migration — it reads usage and configuration
+data via read-only APIs and surfaces savings and risk findings directly inside the dashboards
+teams already use.
+
+Core capabilities:
+- Continuous cloud cost anomaly detection across compute, storage and data transfer.
+- Automated right-sizing recommendations for Kubernetes workloads and managed databases.
+- Security posture checks mapped to SOC 2 and common regulatory frameworks.
+- Data residency controls: customers choose the region their data is processed and stored in.
+
+Pricing: usage-based, starting at $0.02/GB monitored, with volume tiers for larger deployments.
+Regulated-industry deployments (in-country data residency, dedicated tenancy) start at $0.03/GB
+monitored. Exact figures are confirmed with the account team based on footprint.
+
+Compliance: NimbusGuard is SOC 2 Type II certified. Data is stored in the region the customer
+selects at onboarding, and never leaves that region without explicit configuration.
+
+Integrations: AWS, GCP, Azure, Kubernetes, Datadog, Grafana, CloudWatch, Terraform, Slack.
+
+Who it's for: engineering and infrastructure teams at growth-stage SaaS companies, and
+technology/risk leaders at regulated enterprises (banks, NBFCs, insurers) who need cost
+visibility without giving up compliance control.

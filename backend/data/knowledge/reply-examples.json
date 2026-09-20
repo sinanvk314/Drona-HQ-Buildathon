@@ -1,0 +1,51 @@
+{
+  "unsubscribe": [
+    "Please remove me from your mailing list.",
+    "Unsubscribe me, I do not want to receive any more emails.",
+    "Stop emailing me. Take me off your list.",
+    "Not interested, please do not contact me again.",
+    "Remove my address from your database.",
+    "Please take me off your list, thanks.",
+    "Unsubscribe",
+    "Opt me out of these messages."
+  ],
+  "hostile": [
+    "Stop spamming me. This is harassment and I will report you.",
+    "How did you get my details? I will file a complaint if you contact me again.",
+    "This is unsolicited junk. Never message me again.",
+    "You are wasting my time. Leave me alone."
+  ],
+  "out_of_office": [
+    "I am out of the office until Monday with limited access to email.",
+    "Automatic reply: I am on annual leave and will respond when I return.",
+    "Thank you for your message. I am currently travelling and will reply after my return.",
+    "Out of office: I will be away until next week.",
+    "I am on holiday and will be back next week.",
+    "Auto-reply: I am away from my desk and will get back to you on my return."
+  ],
+  "positive": [
+    "Interesting, could we do a quick call this week?",
+    "This sounds relevant. Can you send over some times?",
+    "Happy to chat, I am free Thursday afternoon.",
+    "Yes, let us schedule a demo."
+  ],
+  "objection": [
+    "Before we go further, can you share your SOC 2 report and where data is stored?",
+    "We already use another vendor for this, why should we switch?",
+    "This seems expensive for a company of our size.",
+    "Our security team would never approve giving a third party access to our cloud accounts."
+  ],
+  "question": [
+    "Thanks for reaching out, can you tell me more about how it works?",
+    "What does pricing look like and which clouds do you support?",
+    "Which integrations do you have with Datadog and Grafana?",
+    "Can you explain what your product actually does?"
+  ],
+  "other": [
+    "Please stop calling my assistant and email me directly instead.",
+    "Not right now, maybe reach out again next quarter.",
+    "Can you send this to my colleague who handles infrastructure?",
+    "Please use my personal email address for future messages.",
+    "I am not the right person, try our head of platform."
+  ]
+}

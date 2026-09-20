@@ -1,0 +1,24 @@
+Case Study — Fleetwise: Infra Cost Savings at Scale
+
+Company: Fleetwise, a logistics SaaS company (~240 employees, Series C, $65M raised), running a
+multi-region AWS footprint with Terraform and Grafana.
+
+Problem: Fleetwise's cloud spend had grown 40% year over year, outpacing revenue growth. The
+platform team suspected over-provisioning across Kubernetes workloads but lacked the tooling to
+prove it without slowing down the release cadence their engineering org depended on.
+
+What they did: Fleetwise connected NimbusGuard read-only to their AWS account and existing
+Grafana dashboards. Within the first two weeks, NimbusGuard's right-sizing recommendations
+identified over-provisioned node pools and idle managed database replicas.
+
+Result: Fleetwise cut cloud spend 23% in 60 days without slowing releases or requiring a
+migration. The savings were realized entirely through configuration changes NimbusGuard
+recommended; no application code changes were required.
+
+Quote (VP Engineering): "We assumed fixing this would mean a quarter of engineering time we
+didn't have. NimbusGuard found the same waste in days, inside dashboards our team already
+watches every day."
+
+Relevant for: any prospect whose company is hiring for cloud-cost, platform or FinOps roles, or
+that runs a similar AWS + Kubernetes + Datadog/Grafana stack — Fleetwise is a strong reference
+to cite by name in outreach to comparable companies.

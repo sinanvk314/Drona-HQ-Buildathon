@@ -1,0 +1,33 @@
+Sales Playbook — AI Startup Founders (Voice AI and Agents)
+
+ICP definition: Founders and CEOs (or Heads of Product) of seed to Series B AI startups, 10-100
+employees, building voice or agent products that make heavy GPU or LLM-inference use. Signals:
+a recent seed or Series A, a public launch, hiring for infrastructure or ML platform roles, or a
+public complaint about inference cost. Exclude non-AI companies and pre-product teams with no
+cloud bill.
+
+Positioning: Founders care about runway and speed. Lead with gross-margin impact: inference and
+GPU spend often dominates COGS for AI products, and NimbusGuard shows where it leaks without a
+migration or a platform team. Keep it short, informal and specific. No enterprise jargon.
+
+Example LinkedIn message (launch signal):
+Hi {first_name} - congrats on the launch. Voice products burn compute fast once usage picks up.
+We help AI teams see where cloud and inference spend leaks, read-only, in days. Worth comparing
+notes?
+
+Example SMS (only after a warm reply, and only if SMS is an enabled channel):
+Hi {first_name}, {sender} from NimbusGuard. Sending the one-pager we discussed. Free for a
+10-minute call this week?
+
+Example email (funding signal):
+Subject: Runway and the cloud bill
+Hi {first_name} - saw the seed round. Early on, cloud and GPU spend quietly eats runway. We
+surface waste across compute, storage and data transfer with read-only access, no migration.
+Open to a quick look at what it would find for {company}?
+
+Voice call outline (if the campaign enables voice): open with who you are and why you are calling
+in one sentence, ask permission for 60 seconds, ask one question about their current cloud-cost
+visibility, handle one objection, propose a 15-minute follow-up. Escalate to a human if they ask
+for pricing specifics or a security review.
+
+Rules: founders ignore long messages. Under 60 words for LinkedIn and SMS. One fact, one ask.

@@ -1,0 +1,32 @@
+Sales Playbook — US SaaS CTO / VP Engineering Outreach
+
+ICP definition: CTOs and VPs of Engineering at US SaaS companies with 50-500 employees, running
+AWS, GCP or Azure with Kubernetes, and showing a cloud-cost signal: a FinOps or platform hire, a
+recent funding round, or public commentary on cloud spend. Exclude competitors and companies
+under 50 employees, where cloud spend is rarely a line-item worth optimising.
+
+Positioning: Lead with the outcome (cloud waste found in days, without a migration or an
+engineering quarter), not the product. The buyer's fear is losing release velocity, so stress
+read-only access and that findings surface inside the dashboards the team already uses.
+
+Best proof point: Fleetwise cut cloud spend 23% in 60 days on a multi-region AWS + Kubernetes +
+Grafana footprint. Cite it by name only for comparable stacks.
+
+Example first email (hiring signal):
+Subject: Cloud spend at {company}
+Hi {first_name} - saw {company} is hiring a Cloud FinOps Engineer, which usually means spend has
+outgrown the tooling. We helped a ~240-person logistics SaaS on a similar AWS + Kubernetes setup
+cut cloud spend 23% in 60 days with no migration, via read-only access. Worth a 15-minute look?
+
+Example first email (funding signal):
+Subject: After the raise, before the AWS bill
+Hi {first_name} - congrats on the round. Post-raise is when cloud costs start compounding faster
+than revenue. NimbusGuard flags waste in compute, storage and data transfer without touching your
+release process. Open to a short call to see what it would find on your footprint?
+
+Example follow-up (no reply after 3 days): Keep it to two lines, add one new fact (a different
+capability or the case study), and never repeat the first message. Stop after the campaign's
+touch limit.
+
+Rules: one specific, verifiable fact about the prospect per message. Never invent a metric.
+Keep first emails under 90 words. Book a meeting; do not pitch pricing in the first touch.

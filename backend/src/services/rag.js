@@ -1,14 +1,17 @@
 // Real, campaign-scoped RAG: chunks each campaign's knowledge sources and retrieves the
-// passages most relevant to a given query using TF-IDF cosine similarity.
+// passages most relevant to a given query.
 //
-// Chosen deliberately over an embeddings API for this build: it needs no external API key,
-// so retrieval works identically in both "rule" and "llm" agent-engine modes, and campaign
-// isolation (PS Section 3) comes for free because retrieval is always filtered by campaignId.
-// Swapping this module for pgvector/OpenAI/Voyage embeddings later needs no caller changes —
-// `retrieve(campaignId, query, k)` is the only exported seam.
+// Retrieval is semantic: chunks and the query are embedded locally (embeddings.js, bge-small, no
+// API key, no per-call cost) and ranked by cosine similarity. If the embedding model cannot load,
+// it falls back to lexical TF-IDF so agents always get grounded context. Campaign isolation
+// (PS Section 3) comes for free: retrieval only ever searches the given campaign's own sources.
+//
+// A source's text is either `content` typed or uploaded in the UI, or a file data/knowledge/<docId>.txt.
+// `retrieve(campaign, query, k)` is the only exported seam.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { cosine as vecCosine, embedText, embedTexts } from "./embeddings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const KNOWLEDGE_DIR = path.join(__dirname, "..", "..", "data", "knowledge");
@@ -30,8 +33,14 @@ function chunkText(text, docId, docName) {
     .map((p, i) => ({ id: `${docId}#${i}`, docId, docName, text: p, tokens: tokenize(p) }));
 }
 
+/** Size in characters of a shipped document, for the Knowledge list in the UI. */
+export function docLength(docId) {
+  return loadDoc(docId).length;
+}
+
 const docCache = new Map(); // docId -> raw text
 function loadDoc(docId) {
+  if (!/^[\w.-]+$/.test(docId)) return ""; // a docId is a file name, never a path
   if (docCache.has(docId)) return docCache.get(docId);
   const file = path.join(KNOWLEDGE_DIR, `${docId}.txt`);
   let text = "";
@@ -47,10 +56,9 @@ function loadDoc(docId) {
 function buildChunksForCampaign(campaign) {
   const chunks = [];
   for (const src of campaign.sources || []) {
-    if (!src.docId) continue;
-    const text = loadDoc(src.docId);
+    const text = src.content || (src.docId ? loadDoc(src.docId) : "");
     if (!text) continue;
-    chunks.push(...chunkText(text, src.docId, src.name));
+    chunks.push(...chunkText(text, src.docId || src.id, src.name));
   }
   return chunks;
 }
@@ -88,23 +96,47 @@ function buildIdf(chunks) {
   return idf;
 }
 
+const chunkVectors = new Map(); // chunk text -> embedding, so each chunk is embedded once per process
+
+async function semanticRank(chunks, query, k) {
+  const missing = chunks.filter((c) => !chunkVectors.has(c.text));
+  if (missing.length) {
+    const vectors = await embedTexts(missing.map((c) => c.text));
+    missing.forEach((c, i) => chunkVectors.set(c.text, vectors[i]));
+  }
+  const q = await embedText(query);
+  return chunks
+    .map((chunk) => ({ chunk, score: vecCosine(q, chunkVectors.get(chunk.text)) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
+}
+
+function lexicalRank(chunks, query, k) {
+  const idf = buildIdf(chunks);
+  const qTokens = tokenize(query);
+  return chunks
+    .map((c) => ({ chunk: c, score: cosine(qTokens, c.tokens, idf) }))
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
+}
+
 /**
  * Retrieve the top-k knowledge chunks for a campaign relevant to a query string.
  * Returns [{ label, text }] — `label` is what the Decision Journal's "Retrieved knowledge"
  * list shows (e.g. "NimbusGuard — Product One-Pager.pdf").
  */
-export function retrieve(campaign, query, k = 2) {
+export async function retrieve(campaign, query, k = 2) {
   const chunks = buildChunksForCampaign(campaign);
   if (!chunks.length) return [];
-  const idf = buildIdf(chunks);
-  const qTokens = tokenize(query);
-  const scored = chunks
-    .map((c) => ({ chunk: c, score: cosine(qTokens, c.tokens, idf) }))
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k);
+  let scored;
+  try {
+    scored = await semanticRank(chunks, query, k);
+  } catch {
+    scored = lexicalRank(chunks, query, k);
+  }
   if (!scored.length) {
-    // No lexical overlap — still return the first chunk of each source so agents have
+    // No overlap at all — still return the first chunk of each source so agents have
     // *something* grounded to work from rather than nothing at all.
     const seen = new Set();
     return chunks

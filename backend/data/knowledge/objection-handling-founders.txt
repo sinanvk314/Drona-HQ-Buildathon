@@ -1,0 +1,22 @@
+Objection Handling Playbook — Startup Founders
+
+Objection: "We are too early / small for this."
+Response guidance: The smaller the team, the less time there is to hunt for waste manually.
+Read-only setup takes minutes and needs no engineering project. Offer a short call to see what it
+finds on their account before they commit to anything.
+
+Objection: "How much does it cost?"
+Response guidance: Usage-based, starting at $0.02/GB monitored. Exact figures depend on footprint
+and are confirmed on a call. Do not quote a final number in writing.
+
+Objection: "We can just build this ourselves."
+Response guidance: Acknowledge it is possible. The trade-off is engineering time versus getting
+findings inside the dashboards the team already uses in days. Do not disparage their team.
+
+Objection: "Is it secure? Can you touch our infrastructure?"
+Response guidance: Access is read-only via APIs; NimbusGuard cannot change infrastructure. It is
+SOC 2 Type II certified. Any request for the report or a deeper security review should be
+escalated to a human.
+
+General rule: never fabricate metrics, customer names or certifications. If a founder asks for
+something not in the knowledge base, say a teammate will follow up and escalate.
