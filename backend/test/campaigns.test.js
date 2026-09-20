@@ -124,3 +124,18 @@ test("a new campaign starts blank, and its brief and offer are what the agents a
   assert.throws(() => data.createCampaign({ ...blank, name: "Needs an offer", description: "d", objective: "o", icpText: "i", geography: ["India"], personas: ["Founder"], qualificationPrompt: "q", workingHours: "9-5", dailyLimit: 5 }, { launch: true }), (e) => Boolean(e.fields && e.fields.offer));
   assert.equal(data.getLaunchReview(created.id).checks.some((k) => k.key === "offer" && k.status === "block"), false, "an offer is present");
 });
+
+test("completing a campaign withdraws its pending approvals and hides its prospects until asked for", () => {
+  const s = getState();
+  const c = s.campaigns.find((x) => x.status === "live" && !x.sandbox);
+  const p = s.prospects.find((x) => x.campaignId === c.id);
+  s.approvals.push({ id: "ap_close_test", status: "pending", campaignId: c.id, prospectId: p ? p.id : null, name: "Close Test", company: "Co", tag: "Send first outreach email", tagTone: "neutral", requestedTs: Date.now(), summary: "x", type: "first", draft: { subject: "s", body: "b" } });
+  assert.ok(data.getApprovals().items.some((a) => a.id === "ap_close_test"));
+
+  data.completeCampaign(c.id);
+  assert.ok(!data.getApprovals().items.some((a) => a.id === "ap_close_test"), "nothing to approve in a finished campaign");
+  assert.equal(s.approvals.find((a) => a.id === "ap_close_test").status, "withdrawn");
+  assert.ok(!data.getProspects().some((x) => x.campaignId === c.id), "history is hidden by default");
+  assert.ok(data.getProspects({ includeClosed: true }).some((x) => x.campaignId === c.id));
+  assert.throws(() => data.decideApproval("ap_close_test", { action: "approve" }), /already been handled|finished/);
+});

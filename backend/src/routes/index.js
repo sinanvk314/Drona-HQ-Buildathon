@@ -80,7 +80,7 @@ router.post("/reps/:id/reassign", asyncRoute(async (req, res) => res.json(data.r
 router.post("/campaigns/:id/reps", asyncRoute(async (req, res) => res.json(data.setCampaignReps(req.params.id, (req.body || {}).repIds))));
 
 // ---- prospects ---------------------------------------------------------------
-router.get("/prospects", asyncRoute(async (req, res) => res.json(data.getProspects())));
+router.get("/prospects", asyncRoute(async (req, res) => res.json(data.getProspects({ includeClosed: req.query.closed === "1" }))));
 router.get("/prospects/:id/meeting.ics", asyncRoute(async (req, res) => {
   res.type("text/calendar").set("Content-Disposition", 'attachment; filename="meeting.ics"').send(data.getMeetingIcs(req.params.id));
 }));

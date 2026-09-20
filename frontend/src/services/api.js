@@ -72,7 +72,7 @@ export const getBlueprint = (id) => get(`/campaigns/${id}/blueprint`);
 export const setCampaignPersona = (id, persona) => post(`/campaigns/${id}/persona`, persona);
 export const getLaunchReview = (id) => get(`/campaigns/${id}/launch-review`);
 export const getCampaignConfig = (id) => get(`/campaigns/${id}/config`);
-export const getProspects = () => get("/prospects");
+export const getProspects = ({ includeClosed = false } = {}) => get(`/prospects${includeClosed ? "?closed=1" : ""}`);
 export const getProspect = (id) => get(`/prospects/${id}`);
 export const getDecisions = ({ limit = 4 } = {}) => get(`/decisions?limit=${limit}`);
 export const getDecisionForProspect = (prospectId) => get(`/decisions/for-prospect/${prospectId}`);

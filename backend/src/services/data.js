@@ -120,7 +120,9 @@ function prospectRow(s, p) {
 }
 
 const isSandbox = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && c.sandbox); };
-const pendingApprovals = (s) => s.approvals.filter((a) => a.status === "pending" && !isSandbox(s, a.campaignId)).sort((a, b) => b.requestedTs - a.requestedTs);
+// A finished campaign has nothing left to approve: its drafts must never be sent, so they do not count or show.
+const isClosed = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && (c.status === "completed" || c.status === "archived")); };
+const pendingApprovals = (s) => s.approvals.filter((a) => a.status === "pending" && !isSandbox(s, a.campaignId) && !isClosed(s, a.campaignId)).sort((a, b) => b.requestedTs - a.requestedTs);
 
 function approvalQueueItem(a) {
   return { id: a.id, text: a.summary, tag: a.tag, tone: a.tagTone, ts: a.requestedTs };
@@ -131,6 +133,12 @@ function transition(s, id, to, eventText) {
   if (!canTransition(c.status, to)) throw new Error(`A ${c.status} campaign cannot move to ${to}.`);
   c.status = to;
   c.modifiedTs = Date.now();
+  if (to === "completed" || to === "archived") {
+    // Withdraw what is still waiting for a human: nothing more will be sent from a finished campaign.
+    for (const a of s.approvals) {
+      if (a.campaignId === id && a.status === "pending") { a.status = "withdrawn"; a.decidedTs = Date.now(); a.reason = `Campaign ${to}`; }
+    }
+  }
   if (eventText) addEvent(s, { campaignId: id, type: to === "live" ? "resume" : to, text: eventText(c) });
   return { id: c.id, status: c.status };
 }
@@ -391,9 +399,10 @@ export function getMeetingIcs(prospectId) {
   return p.meeting.ics;
 }
 
-export function getProspects() {
+/** Prospects across campaigns. Those of completed or archived campaigns are history: shown only when asked for. Sandbox runs never. */
+export function getProspects({ includeClosed = false } = {}) {
   const s = getState();
-  return s.prospects.map((p) => prospectRow(s, p));
+  return s.prospects.filter((p) => !isSandbox(s, p.campaignId) && (includeClosed || !isClosed(s, p.campaignId))).map((p) => prospectRow(s, p));
 }
 
 export function getProspect(id) {
@@ -709,6 +718,7 @@ export function decideApproval(id, { action, reason = "" } = {}) {
     const a = s.approvals.find((x) => x.id === id);
     if (!a) throw new Error("Approval not found.");
     if (a.status !== "pending") throw new Error("This action has already been handled.");
+    if (isClosed(s, a.campaignId)) throw new Error("This campaign is finished, so nothing more can be sent from it.");
     if (action !== "approve" && action !== "reject") throw new Error("Unknown action.");
     if (action === "reject" && !reason.trim()) throw new Error("Add a reason before rejecting.");
 
