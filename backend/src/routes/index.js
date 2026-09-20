@@ -27,6 +27,10 @@ router.post("/campaigns", asyncRoute(async (req, res) => {
 router.get("/campaigns/:id", asyncRoute(async (req, res) => res.json(data.getCampaign(req.params.id))));
 router.get("/campaigns/:id/config", asyncRoute(async (req, res) => res.json(data.getCampaignConfig(req.params.id))));
 router.put("/campaigns/:id", asyncRoute(async (req, res) => res.json(data.updateCampaign(req.params.id, (req.body || {}).values || {}))));
+router.post("/campaigns/:id/prompts/pins", asyncRoute(async (req, res) => res.json(data.setCampaignPin(req.params.id, (req.body || {}).agentId, (req.body || {}).version))));
+router.post("/campaigns/:id/prompts/system", asyncRoute(async (req, res) => res.json(data.saveCampaignSystemPrompt(req.params.id, (req.body || {}).text))));
+router.post("/campaigns/:id/prompts/system/:version/activate", asyncRoute(async (req, res) => res.json(data.activateCampaignSystemPrompt(req.params.id, req.params.version))));
+router.post("/campaigns/:id/prompts/overrides", asyncRoute(async (req, res) => res.json(data.setCampaignOverride(req.params.id, (req.body || {}).agentId, (req.body || {}).text))));
 router.post("/campaigns/:id/duplicate", asyncRoute(async (req, res) => res.json(data.duplicateCampaign(req.params.id))));
 router.post("/campaigns/:id/sources", asyncRoute(async (req, res) => res.json(data.addCampaignSource(req.params.id, req.body || {}))));
 router.delete("/campaigns/:id/sources/:sourceId", asyncRoute(async (req, res) => res.json(data.removeCampaignSource(req.params.id, req.params.sourceId))));
@@ -55,8 +59,6 @@ router.get("/agents", asyncRoute(async (req, res) => res.json(data.getAgents()))
 router.get("/agents/:id", asyncRoute(async (req, res) => res.json(data.getAgent(req.params.id))));
 router.post("/agents/:id/versions", asyncRoute(async (req, res) => res.json(data.savePromptVersion(req.params.id, (req.body || {}).text))));
 router.post("/agents/:id/versions/:version/activate", asyncRoute(async (req, res) => res.json(data.activatePromptVersion(req.params.id, req.params.version))));
-router.post("/agents/:id/compare", asyncRoute(async (req, res) => res.json(await data.requestPromptCompare())));
-router.post("/agents/:id/rollback", asyncRoute(async (req, res) => res.json(await data.requestPromptRollback())));
 router.post("/agents/:id/enabled", asyncRoute(async (req, res) => res.json(data.setAgentEnabled(req.params.id, !!(req.body || {}).enabled))));
 
 // ---- settings / global controls --------------------------------------------------

@@ -2,6 +2,8 @@
 // the state the 8 wireframes/screens were built against. `sources[].docId` is new: it points
 // at a real text file under data/knowledge/ so the RAG service has real content to retrieve
 // (the frontend mock only ever needed the file *name* for display).
+import { initCampaignPrompts } from "../services/prompts.js";
+
 export const SCHEMA_VERSION = 2; // 2: per-campaign knowledge sources, approval levels
 
 export function buildSeed(now) {
@@ -440,6 +442,9 @@ export function buildSeed(now) {
   const integrations = ["Gemini", "Local embeddings (RAG)", "DronaHQ Agentic AI", "Gmail API", "Twilio", "Apollo"].map((name) => ({
     name, connected: name === "Gemini" || name === "Local embeddings (RAG)",
   }));
+
+  // Every campaign starts pinned to the prompt versions that are active now, with its own system prompt.
+  for (const c of campaigns) initCampaignPrompts(c, agents);
 
   return {
     version: SCHEMA_VERSION,

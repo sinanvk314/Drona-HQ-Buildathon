@@ -2,6 +2,7 @@
 // so replaces the saved state), these only ADD what a newer version needs: they never remove or overwrite a
 // campaign, prospect or setting the user created. Safe to run repeatedly.
 import { buildSeed } from "./seed.js";
+import { initCampaignPrompts } from "../services/prompts.js";
 
 /** @returns true if anything changed (so the caller can save). */
 export function migrate(state, now = Date.now()) {
@@ -24,6 +25,10 @@ export function migrate(state, now = Date.now()) {
       changed = true;
     }
   }
+
+  // Pin every existing campaign to the prompt versions active now, so later edits to the shared library cannot
+  // silently change how a running campaign behaves.
+  for (const c of state.campaigns) if (initCampaignPrompts(c, state.agents)) changed = true;
 
   for (const p of state.prospects) {
     if (!Array.isArray(p.touches)) { p.touches = []; changed = true; }

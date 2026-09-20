@@ -17,6 +17,7 @@ import { sentToday } from "./limits.js";
 import { simClockLabel, withinWorkingHours } from "./simTime.js";
 import { config } from "../config.js";
 import { currentUser } from "./auth.js";
+import { activeSystemPrompt, activeVersionOf, initCampaignPrompts, logPromptChange, pinnedVersion } from "./prompts.js";
 
 function campaignOf(s, id) {
   const c = s.campaigns.find((x) => x.id === id);
@@ -50,6 +51,24 @@ function cardOf(s, c) {
 // What the UI needs to list a knowledge source. The text itself is never sent back, only its size.
 function sourceView(x) {
   return { id: x.id, name: x.name, category: x.category, chars: x.content ? x.content.length : x.docId ? docLength(x.docId) : 0, custom: !!x.content };
+}
+
+// What the campaign page needs to manage this campaign's prompts: its own system prompt (versioned), which library
+// version it is pinned to for each agent, its overrides, and who changed what.
+function promptsView(s, c) {
+  const sp = c.systemPrompt;
+  return {
+    system: sp ? { active: sp.active, versions: sp.versions.map((v) => ({ ...v })) } : null,
+    agents: s.agents.map((a) => {
+      const override = a.overrides.find((o) => o.campaignId === c.id);
+      return {
+        agentId: a.id, title: a.title, pinned: pinnedVersion(a, c).version, latest: activeVersionOf(a).version,
+        versions: a.versions.map((v) => ({ version: v.version, changedBy: v.changedBy, date: v.date })),
+        override: override ? { text: override.text, by: override.by || null, ts: override.ts } : null,
+      };
+    }),
+    log: (c.promptLog || []).slice(0, 12),
+  };
 }
 
 function prospectRow(s, p) {
@@ -159,6 +178,7 @@ export function getCampaign(id) {
     timeline: draft ? [] : s.events.filter((e) => e.campaignId === id).sort((a, b) => b.ts - a.ts).slice(0, 4).map((e) => ({ id: e.id, type: e.type, text: e.text, ts: e.ts })),
     outreach: o,
     approvals: { count: pending.length, items: pending.slice(0, 2).map(approvalQueueItem) },
+    prompts: promptsView(s, c),
     approvalPolicy: { ...c.approvals },
     cadence: { ...(c.cadence || { maxTouches: 3, waitHours: 72 }) },
     limits: {
@@ -268,6 +288,7 @@ export function getAgent(id) {
   return {
     id: a.id, title: a.title, description: a.description, status: agentStatus(s, a),
     scope: s.campaigns.filter((c) => c.status !== "archived").map((c) => c.name),
+    campaignPins: s.campaigns.filter((c) => c.status !== "archived").map((c) => ({ campaignId: c.id, campaignName: c.name, version: pinnedVersion(a, c).version })),
     active, versions: a.versions,
     overrides: a.overrides.map((o) => {
       const c = s.campaigns.find((x) => x.id === o.campaignId);
@@ -414,6 +435,7 @@ export function createCampaign(values, { launch = false } = {}) {
       funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
+    initCampaignPrompts(s.campaigns[s.campaigns.length - 1], s.agents, currentUser());
     if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by ${currentUser()}` });
     return { id, status: launch ? "live" : "draft" };
   });
@@ -473,6 +495,7 @@ export function duplicateCampaign(id) {
       const copies = agent.overrides.filter((o) => o.campaignId === id).map((o) => ({ ...o, campaignId: newId, ts: now }));
       agent.overrides.push(...copies);
     }
+    logPromptChange(s.campaigns[s.campaigns.length - 1], currentUser(), `Created as a copy of ${src.name}: same prompt versions`);
     addEvent(s, { campaignId: newId, type: "edit", text: `**${name}** created as a copy of **${src.name}**`, featured: false });
     return { id: newId, status: "draft" };
   });
@@ -591,14 +614,74 @@ export function savePromptVersion(agentId, text) {
   });
 }
 
-// STUB, matching the frontend: side-by-side compare and one-click rollback are not built yet.
-// Activating an earlier version from the version history table is the supported rollback path.
-export async function requestPromptCompare() {
-  return { available: false, message: "Side-by-side version comparison is coming soon." };
+// ---- per-campaign prompts. Nothing here touches another campaign, and the shared library is only read. ----
+
+function promptCampaign(s, id) {
+  const c = campaignOf(s, id);
+  if (c.status === "archived") throw new Error("An archived campaign cannot be edited.");
+  initCampaignPrompts(c, s.agents, currentUser());
+  return c;
 }
 
-export async function requestPromptRollback() {
-  return { available: false, message: "One-click rollback is coming soon. Use Activate on a previous version for now." };
+export function setCampaignPin(campaignId, agentId, version) {
+  return withState((s) => {
+    const c = promptCampaign(s, campaignId);
+    const agent = s.agents.find((a) => a.id === agentId);
+    if (!agent) throw new Error("Agent not found.");
+    if (!agent.versions.some((v) => v.version === version)) throw new Error("Version not found.");
+    const from = pinnedVersion(agent, c).version;
+    if (from === version) return { agentId, version };
+    c.promptPins[agentId] = version;
+    c.modifiedTs = Date.now();
+    logPromptChange(c, currentUser(), `${agent.title}: ${from} → ${version}`);
+    addEvent(s, { campaignId, type: "edit", text: `${currentUser()} moved **${c.name}** to ${agent.title} ${version} (was ${from})`, featured: false });
+    return { agentId, version };
+  });
+}
+
+export function saveCampaignSystemPrompt(campaignId, text) {
+  return withState((s) => {
+    const c = promptCampaign(s, campaignId);
+    if (!text || !text.trim()) throw new Error("The campaign prompt cannot be empty.");
+    const next = Math.max(...c.systemPrompt.versions.map((v) => v.version)) + 1;
+    c.systemPrompt.versions.push({ version: next, text: text.trim(), by: currentUser(), ts: Date.now() });
+    c.systemPrompt.active = next;
+    c.modifiedTs = Date.now();
+    logPromptChange(c, currentUser(), `Campaign system prompt saved as v${next}`);
+    addEvent(s, { campaignId, type: "edit", text: `${currentUser()} saved campaign prompt v${next} for **${c.name}**`, featured: false });
+    return { version: next };
+  });
+}
+
+/** Also the roll-back: activating an earlier version restores it without deleting anything newer. */
+export function activateCampaignSystemPrompt(campaignId, version) {
+  return withState((s) => {
+    const c = promptCampaign(s, campaignId);
+    const v = c.systemPrompt.versions.find((x) => x.version === Number(version));
+    if (!v) throw new Error("Version not found.");
+    if (c.systemPrompt.active === v.version) return { version: v.version };
+    const from = c.systemPrompt.active;
+    c.systemPrompt.active = v.version;
+    c.modifiedTs = Date.now();
+    logPromptChange(c, currentUser(), `Campaign system prompt v${from} → v${v.version}`);
+    addEvent(s, { campaignId, type: "edit", text: `${currentUser()} set the campaign prompt of **${c.name}** to v${v.version} (was v${from})`, featured: false });
+    return { version: v.version };
+  });
+}
+
+/** An override is this campaign's extra instruction for one agent (empty text removes it). Other campaigns never see it. */
+export function setCampaignOverride(campaignId, agentId, text) {
+  return withState((s) => {
+    const c = promptCampaign(s, campaignId);
+    const agent = s.agents.find((a) => a.id === agentId);
+    if (!agent) throw new Error("Agent not found.");
+    const clean = (text || "").trim();
+    agent.overrides = agent.overrides.filter((o) => o.campaignId !== campaignId);
+    if (clean) agent.overrides.push({ campaignId, text: clean, ts: Date.now(), by: currentUser() });
+    c.modifiedTs = Date.now();
+    logPromptChange(c, currentUser(), clean ? `${agent.title}: override set` : `${agent.title}: override removed`);
+    return { agentId, hasOverride: !!clean };
+  });
 }
 
 // ---------------------------------------------------------------- global controls

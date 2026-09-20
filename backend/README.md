@@ -128,9 +128,11 @@ All routes are mounted under `/api`. Request/response bodies mirror the frontend
 | GET | `/agents/:id` | `getAgent` |
 | POST | `/agents/:id/versions` `{text}` | `savePromptVersion` |
 | POST | `/agents/:id/versions/:version/activate` | `activatePromptVersion` |
-| POST | `/agents/:id/compare` | `requestPromptCompare` (stub, matches frontend) |
-| POST | `/agents/:id/rollback` | `requestPromptRollback` (stub, matches frontend) |
 | POST | `/agents/:id/enabled` `{enabled}` | `setAgentEnabled` |
+| POST | `/campaigns/:id/prompts/pins` `{agentId, version}` | `setCampaignPin` (which library version this campaign uses) |
+| POST | `/campaigns/:id/prompts/system` `{text}` | `saveCampaignSystemPrompt` (new version) |
+| POST | `/campaigns/:id/prompts/system/:version/activate` | `activateCampaignSystemPrompt` (also the roll-back) |
+| POST | `/campaigns/:id/prompts/overrides` `{agentId, text}` | `setCampaignOverride` |
 | GET | `/settings` | `getSettings` |
 | POST | `/settings/kill-switch` `{active}` | `setKillSwitch` |
 | POST | `/settings/channels/:key` `{enabled}` | `setChannelEnabled` |

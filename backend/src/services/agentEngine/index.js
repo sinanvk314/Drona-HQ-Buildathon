@@ -8,13 +8,12 @@ import * as dronahq from "./dronahqEngine.js";
 import * as gemini from "./geminiEngine.js";
 import { retrieve } from "../rag.js";
 import { checkGrounding, describeIssues } from "../grounding.js";
+import { composePrompt } from "../prompts.js";
 import { capReached, recordAvoided, recordLlmDecision, recordLlmError, recordRuleFallback } from "../usage.js";
 
-function activePromptFor(agent, campaignId) {
-  const active = agent.versions.find((v) => v.status === "active") || agent.versions[0];
-  const override = agent.overrides.find((o) => o.campaignId === campaignId);
-  return { text: active ? active.text : "", harness: active ? active.version : "v0", override: override ? override.text : null };
-}
+// What the agent is given for this campaign: the campaign system prompt + the version the campaign is pinned to.
+// See services/prompts.js.
+export const activePromptFor = composePrompt;
 
 // AGENT_ENGINE is a chain of engines tried in order: "dronahq", "gemini", "llm" (Anthropic), for
 // example "dronahq,gemini". The first that succeeds decides. The deterministic rule engine is always
@@ -75,7 +74,7 @@ async function groundedRun(run, check) {
 }
 
 export async function scoreICP({ state, campaign, prospect, icpAgent }) {
-  const { text, harness, override } = activePromptFor(icpAgent, campaign.id);
+  const { text, harness, override } = activePromptFor(icpAgent, campaign);
   const knowledge = await retrieve(campaign, `${campaign.icpText} ${campaign.qualificationPrompt}`, 2);
 
   // Matching before judgment: when the deterministic score is nowhere near the threshold (or a hard
@@ -107,7 +106,7 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
 }
 
 export async function draftOutreach({ campaign, prospect, personalisationAgent, channel }) {
-  const { text, harness, override } = activePromptFor(personalisationAgent, campaign.id);
+  const { text, harness, override } = activePromptFor(personalisationAgent, campaign);
   const knowledge = await retrieve(campaign, `${prospect.company} ${prospect.industry} ${(prospect.reasons || []).join(" ")}`, 2);
   const run = (feedback) => {
     const guided = feedback ? `${override || ""} ${feedback}`.trim() : override;
@@ -124,7 +123,7 @@ export async function draftOutreach({ campaign, prospect, personalisationAgent, 
 
 /** Outreach Strategy Agent: the prospect's touch plan. `allowedChannels` are the campaign's channels that are enabled right now. */
 export async function planOutreach({ campaign, prospect, strategyAgent, allowedChannels }) {
-  const { text, harness, override } = activePromptFor(strategyAgent, campaign.id);
+  const { text, harness, override } = activePromptFor(strategyAgent, campaign);
   const maxTouches = (campaign.cadence && campaign.cadence.maxTouches) || 3;
   const defaultWait = (campaign.cadence && campaign.cadence.waitHours) || 72;
   const args = { campaign, prospect, allowedChannels, maxTouches, defaultWait };
@@ -142,7 +141,7 @@ const FOLLOWUP_TOPICS = ["customer case study results", "works with existing too
 
 /** Follow-up Agent: the next message for a prospect who has not replied. */
 export async function draftFollowUp({ campaign, prospect, followupAgent, channel, touchNumber, isLast }) {
-  const { text, harness, override } = activePromptFor(followupAgent, campaign.id);
+  const { text, harness, override } = activePromptFor(followupAgent, campaign);
   const topic = FOLLOWUP_TOPICS[(touchNumber - 1) % FOLLOWUP_TOPICS.length];
   const knowledge = await retrieve(campaign, `${prospect.industry} ${topic}`, 2);
   const args = { campaign, prospect, knowledge, channel, touchNumber, isLast };
@@ -160,7 +159,7 @@ export async function draftFollowUp({ campaign, prospect, followupAgent, channel
 }
 
 export async function handleConversation({ campaign, prospect, conversationAgent }) {
-  const { text, harness, override } = activePromptFor(conversationAgent, campaign.id);
+  const { text, harness, override } = activePromptFor(conversationAgent, campaign);
   const lastIn = (prospect.conversation || []).filter((c) => c.dir === "in").slice(-1)[0];
   const knowledge = await retrieve(campaign, lastIn ? lastIn.text : campaign.objective, 2);
   const run = (feedback) => {
