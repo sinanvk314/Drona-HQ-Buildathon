@@ -124,3 +124,31 @@ export const setCampaignAgentEnabled = (id, agentId, enabled) => post(`/campaign
 export const setAgentEnabled = (id, enabled) => post(`/agents/${id}/enabled`, { enabled });
 export const setChannelEnabled = (key, enabled) => post(`/settings/channels/${key}`, { enabled });
 export const addSuppression = ({ contact, reason }) => post("/settings/suppression", { contact, reason });
+
+// ---------------------------------------------------------------- Dev tab: judge sandbox, search playground, real-data tests
+export const getRuntime = () => get("/dev/runtime");
+export const getSandboxes = () => get("/dev/sandboxes");
+export const getSandbox = (id) => get(`/dev/sandboxes/${id}`);
+export const createSandbox = (values) => post("/dev/sandboxes", values);
+export const runSandbox = (id) => post(`/dev/sandboxes/${id}/run`);
+export const sandboxReply = (id, text) => post(`/dev/sandboxes/${id}/reply`, { text });
+export const sandboxFeedback = (id, { rating, notes }) => post(`/dev/sandboxes/${id}/feedback`, { rating, notes });
+export const deleteSandbox = (id) => del(`/dev/sandboxes/${id}`);
+export const devSearch = ({ audience, count }) => post("/dev/search", { audience, count });
+export const getDevTests = () => get("/dev/tests");
+export const addDevTest = (values) => post("/dev/tests", values);
+export const removeDevTest = (id) => del(`/dev/tests/${id}`);
+export const runDevTests = (campaignId) => post("/dev/tests/run", { campaignId });
+
+// The calendar invite is behind sign-in, so it is fetched with the session token and saved as a file.
+export async function downloadMeetingInvite(prospectId) {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}/prospects/${prospectId}/meeting.ics`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  if (!res.ok) throw new Error("There is no calendar invite for this person yet.");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "meeting.ics";
+  a.click();
+  URL.revokeObjectURL(url);
+}

@@ -13,6 +13,7 @@ const ITEMS = [
   { key: "agents", label: "Agents & Prompts", icon: "sliders", route: "agents" },
   { key: "reps", label: "Representatives", icon: "people", route: "reps" },
   { key: "analytics", label: "Compare", icon: "bars", route: "analytics" },
+  { key: "dev", label: "Dev", icon: "sparkle", route: "dev" },
   { key: "settings", label: "Settings", icon: "gear", route: "settings" },
 ];
 

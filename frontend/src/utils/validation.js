@@ -4,6 +4,15 @@ export function validateCampaign(v, launch) {
   const e = {};
   if (!v.name || v.name.trim().length < 3) e.name = "Enter a campaign name (at least 3 characters).";
   if (!launch) return e;
+  if (v.mode === "single") {
+    // One named person instead of an audience: no ICP, region, roles or qualification score to define.
+    if (!v.objective || !v.objective.trim()) e.objective = "Enter the campaign objective.";
+    if (!v.offer || !v.offer.trim()) e.offer = "Describe what this campaign offers.";
+    if (!v.target || !v.target.name || !v.target.name.trim()) e.targetName = "Enter the person's name.";
+    if (!v.target || !v.target.organisation || !v.target.organisation.trim()) e.targetOrganisation = "Enter their organisation.";
+    if (!v.channels || !v.channels.length) e.channels = "Select at least one channel.";
+    return e;
+  }
   if (!v.description || !v.description.trim()) e.description = "Add a short description.";
   if (!v.owner || !v.owner.trim()) e.owner = "Enter an owner.";
   if (!v.objective || !v.objective.trim()) e.objective = "Enter the campaign objective.";

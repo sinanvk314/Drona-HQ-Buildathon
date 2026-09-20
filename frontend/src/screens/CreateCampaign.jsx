@@ -100,6 +100,14 @@ export default function CreateCampaign({ params = {} }) {
       });
     }
   };
+  const mode = v.mode === "single" ? "single" : "bulk";
+  const single = mode === "single";
+  const target = { name: "", title: "", organisation: "", email: "", ...(v.target || {}), notes: Array.isArray(v.target && v.target.notes) ? v.target.notes.join("\n") :(v.target && v.target.notes) || "" };
+  const setTarget = (k, val) => {
+    set("target", { ...target, [k]: val });
+    const key = k === "name" ? "targetName" : k === "organisation" ? "targetOrganisation" : null;
+    if (key && errors[key]) setErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+  };
   const toggleIn = (k, item) => set(k, v[k].includes(item) ? v[k].filter((x) => x !== item) : [...v[k], item]);
   const addOption = (optKey, selKey, label) => {
     if (!v[optKey].includes(label)) setV((p) => ({ ...p, [optKey]: [...p[optKey], label], [selKey]: [...p[selKey], label] }));
@@ -179,6 +187,28 @@ export default function CreateCampaign({ params = {} }) {
     <Shell active="campaigns" title={title} badge={badge} footer={footer}>
       <div style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 18 }}>
         <div className="card" style={{ padding: 22 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Who is this campaign for?</div>
+          <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>
+            {editId ? "This cannot be changed once the campaign exists." : "Choose whether the SDR should find a whole audience, or work on one specific person."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[
+              ["bulk", "A group matching an ICP", "The SDR finds people that fit the description, judges who qualifies and reaches out to each."],
+              ["single", "One specific person", "You name one person. The SDR researches them and works only on them until they answer or a meeting is booked."],
+            ].map(([key, label, body]) => (
+              <button
+                key={key} type="button" aria-pressed={mode === key} disabled={!!editId && mode !== key}
+                onClick={() => !editId && set("mode", key)}
+                style={{ textAlign: "left", padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${mode === key ? "var(--accent)" : "var(--border-strong)"}`, background: mode === key ? "var(--accent-soft)" : "#fff", cursor: editId ? "default" : "pointer", opacity: editId && mode !== key ? 0.5 : 1, fontFamily: "inherit" }}
+              >
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{label}</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>{body}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Campaign Name" htmlFor="cc-name" error={errors.name} hint="A short name managers will recognise on the dashboard and in reports.">
@@ -206,6 +236,35 @@ export default function CreateCampaign({ params = {} }) {
           </div>
         </div>
 
+        {single ? (
+          <div className="card" style={{ padding: 22 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>The Person</div>
+            <div className="field-hint" style={{ marginTop: 0, marginBottom: 14 }}>
+              The SDR can only use what you write here: it does not look anything up. The more you know, the more specific its message can be.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <Field label="Name" htmlFor="cc-tname" error={errors.targetName} hint="Who the SDR is trying to reach.">
+                  <input id="cc-tname" className={cls("targetName")} value={target.name} placeholder="Full name" onChange={(e) => setTarget("name", e.target.value)} />
+                </Field>
+                <Field label="Role" htmlFor="cc-ttitle" hint="Optional. Helps the SDR choose the tone.">
+                  <input id="cc-ttitle" className="input" value={target.title} placeholder="Their job title or position" onChange={(e) => setTarget("title", e.target.value)} />
+                </Field>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <Field label="Organisation" htmlFor="cc-torg" error={errors.targetOrganisation} hint="Where they work or study.">
+                  <input id="cc-torg" className={cls("targetOrganisation")} value={target.organisation} placeholder="Company, college, club..." onChange={(e) => setTarget("organisation", e.target.value)} />
+                </Field>
+                <Field label="Email" htmlFor="cc-temail" hint="Optional. Used for the calendar invite once a meeting is booked.">
+                  <input id="cc-temail" className="input" value={target.email} placeholder="Their email address" onChange={(e) => setTarget("email", e.target.value)} />
+                </Field>
+              </div>
+              <Field label="What is known about them" htmlFor="cc-tnotes" hint="One fact per line: things they have done, said or care about. The SDR may refer to these and to nothing else about them.">
+                <textarea id="cc-tnotes" className="input" rows={4} value={target.notes} placeholder="One thing you know about them per line" onChange={(e) => setTarget("notes", e.target.value)} />
+              </Field>
+            </div>
+          </div>
+        ) : (
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Targeting &amp; ICP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -237,11 +296,19 @@ export default function CreateCampaign({ params = {} }) {
             <Field label="Organisation Criteria" htmlFor="cc-company" hint="Facts about the organisation that must be true: its size, type or stage.">
               <input id="cc-company" className="input" placeholder="What must be true about the organisation" value={v.companyCriteria} onChange={(e) => set("companyCriteria", e.target.value)} />
             </Field>
+            <Field label="Where the prospects come from" htmlFor="cc-sourcing" hint="The imitated search asks an AI to act as a people-search tool: it returns realistic but fictional people for any audience, so you can test with anything. The free generator only makes up companies. Real data providers are on the roadmap.">
+              <select id="cc-sourcing" className="input" value={v.sourcing || "simulated-search"} onChange={(e) => set("sourcing", e.target.value)}>
+                <option value="simulated-search">Imitated people search (AI, fictional people)</option>
+                <option value="synthetic">Free generator (made-up companies)</option>
+              </select>
+            </Field>
             <Field label="Exclusion Criteria" htmlFor="cc-excl" hint="People or organisations to always skip. Anyone matching is rejected on sight.">
               <input id="cc-excl" className="input" placeholder="Who must never be contacted" value={v.exclusionCriteria} onChange={(e) => set("exclusionCriteria", e.target.value)} />
             </Field>
           </div>
         </div>
+
+        )}
 
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Channels &amp; Limits</div>
@@ -256,9 +323,11 @@ export default function CreateCampaign({ params = {} }) {
                 ))}
               </div>
             </Field>
+            {!single && (
             <Field label="Qualification Criteria (prompt)" htmlFor="cc-qual" error={errors.qualificationPrompt} hint="The rule the ICP agent uses to score fit and decide who qualifies, including the score needed. This is the most important prompt for deciding who gets contacted.">
               <textarea id="cc-qual" className={cls("qualificationPrompt")} rows={3} placeholder="State what makes someone qualify and the score needed" value={v.qualificationPrompt} onChange={(e) => set("qualificationPrompt", e.target.value)} />
             </Field>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="Daily Outreach Limit" htmlFor="cc-limit" error={errors.dailyLimit} hint="The most touches this campaign sends in one (simulated) day.">
                 <input id="cc-limit" type="number" min="1" max="1000" className={cls("dailyLimit")} value={v.dailyLimit} onChange={(e) => set("dailyLimit", e.target.value)} />
