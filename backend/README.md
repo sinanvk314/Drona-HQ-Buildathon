@@ -8,127 +8,40 @@ versioning, cross-campaign conflict detection, and campaign-scoped RAG (PS Secti
 
 ## 1. Tech stack
 
-- **Node.js + Express** — REST API, matches the frontend's own plain-JS/ESM style.
-- **Postgres (Neon), real tables** — when `DATABASE_URL` is set, every campaign / prospect /
-  decision / approval / agent / setting is a row in a real relational table in your Neon project
-  (see Section 3a). This is the default for the deployed/demo build.
-- **JSON file datastore** (`data/state.json`) — the zero-setup fallback when `DATABASE_URL` is
-  *not* set: a direct backend-side port of the frontend's own mock store (`src/services/store.js`
-  + `src/data/seed.js`), same shape and seed data, just persisted to disk instead of
-  `sessionStorage`. Handy for offline demoing or a laptop with no network.
-  Either way, every route/service file (`src/services/data.js`, `scheduler.js`, `conflict.js`,
-  `rag.js`, `agentEngine/*`) is completely unaware of which store is active — they only ever call
-  `getState()`/`withState()` from `src/db/index.js`, which dispatches to Postgres or the JSON file.
-- **TF-IDF retrieval** (`src/services/rag.js`) over campaign-scoped knowledge documents
-  (`data/knowledge/*.txt`) — real retrieval-before-decision, no external embeddings API key
-  required. Swappable for pgvector/OpenAI/Voyage embeddings behind the same `retrieve()` call.
-- **Anthropic API** (`@anthropic-ai/sdk`), optional — real LLM-driven agent reasoning when
-  `AGENT_ENGINE=llm` and `ANTHROPIC_API_KEY` is set. Defaults to a deterministic rule engine
-  (`src/services/agentEngine/ruleEngine.js`) that needs no API key at all, so the backend runs
-  end to end immediately after `npm install`.
+- **Node.js + Express** — REST API, plain ESM JavaScript.
+- **JSON file datastore** (`data/state.json`, gitignored) — the default and the tested path. Created and seeded on
+  first start; each clone gets its own copy.
+- **Postgres (optional)** — set `DATABASE_URL` and `src/db/postgresAdapter.js` maps the same in-memory state to real
+  tables instead. Not needed unless the host loses its disk on restart. It does not yet store the approval-level
+  fields or custom knowledge-source text.
+- **Local embeddings** (`fastembed`, `BAAI/bge-small-en-v1.5`, in-process ONNX, no API key) for knowledge retrieval
+  (`src/services/rag.js`) and reply routing (`src/services/replyRouter.js`). TF-IDF is the fallback if the model
+  cannot load.
+- **Agent engines** — Google Gemini (default LLM), optional DronaHQ webhooks and Anthropic, and a deterministic rule
+  engine that is always the last fallback (`src/services/agentEngine/`).
 
 ## 2. Setup & run
 
 ```bash
 npm install
-cp .env.example .env      # optional — every value has a working default
+cp .env.example .env      # Windows CMD: copy .env.example .env
 npm start                 # http://localhost:8080
 ```
 
-The server seeds itself on first boot with the same 3 campaigns / prospects / agents / decisions
-the wireframes and frontend were built against (`src/db/seed.js`), and starts an autonomous
-scheduler (`src/services/scheduler.js`) that advances Live campaigns every 12 seconds — this is
-what makes the system "autonomous" rather than only reactive to clicks in the UI.
+The full guide, including the Gemini key, every environment variable, deployment and running as a team, is in the
+[root README](../README.md). Short version:
 
-If `DATABASE_URL` is set (see 3a below), that first-boot seed goes into your real Postgres tables
-instead of a local file — this repo's Neon project already has it seeded, so a normal `npm start`
-against it will find the 3 campaigns already there and just load them.
+- No key needed to start: it runs on the rule engine.
+- For Gemini, put `AGENT_ENGINE=gemini` and `GEMINI_API_KEY=...` in `.env` and restart.
+- The first start seeds three campaigns and starts the scheduler, which advances Live campaigns every 12 seconds.
+- To reset, delete `data/state.json` and restart. **That deletes all campaigns you created.**
 
-To reset back to the seed data at any time: `npm run reset-data` (or, in JSON-file mode only, just
-delete `data/state.json` and restart).
-
-### 3a. Postgres (Neon) — real tables
-
-`.env` already has `DATABASE_URL` filled in, pointing at this project's Neon database. When that
-variable is set, `src/db/index.js` uses `src/db/postgresAdapter.js` instead of the JSON file, and
-every mutation (`withState()` — the same function every route already calls) is written straight
-into 13 real tables:
-
-```
-campaigns, campaign_sources, prospects, events, decisions, approvals,
-agents, agent_versions, agent_overrides, channels, suppression, integrations, app_settings
-```
-
-The schema is a normal normalized relational design (foreign keys with `ON DELETE CASCADE`,
-indexes on every FK) — scalar/queryable fields are real typed columns, small repeated lists
-(geography, personas, tech stack, evidence, etc.) are native Postgres `text[]` columns, and only
-genuinely nested/variable-shape data (a prospect's message history and conversation transcript)
-is `jsonb`. `campaign_sources.id` is scoped per-campaign (its primary key is the composite
-`(campaign_id, id)`, not `id` alone), because source ids like `s1`/`s2` are reused across
-campaigns in the seed data.
-
-These 13 tables have already been created in this project's Neon database and seeded with the
-same demo data described above — you can open the Neon console (or any Postgres client) and see
-3 campaigns, 12 prospects, 7 decisions, 5 approvals, and so on, right now, without running the
-server at all.
-
-**What I could verify from here vs. what needs your own quick check:** I created the tables and
-seeded them directly against your Neon project via SQL (verified with `SELECT count(*)` on every
-table, plus spot-checks confirming array and JSON fields came back correctly typed) — that part is
-confirmed working. What I could *not* do from my own sandbox is boot the actual Node server against
-Neon end-to-end: this environment's network policy blocks raw TCP database connections (Postgres
-isn't HTTP), so `pg`'s connection from `src/db/pg.js` can't be exercised here. The code path itself
-is the standard, well-established `pg` `Pool`/parameterized-query pattern, and I did verify the
-JSON-file fallback mode boots and round-trips writes correctly end-to-end (same `withState()` call
-path, different persistence target) — but the very first thing to do after unzipping is:
-
-```bash
-npm install
-npm start
-```
-
-...and confirm the log line reads `Datastore: Postgres (Neon)` (not "local JSON file") and that
-`GET http://localhost:8080/api/command-center` returns the 3 seeded campaigns. If anything looks
-off, tell me the exact error and I'll fix it immediately.
-
-Removing `DATABASE_URL` from `.env` (or setting it blank) switches straight back to the zero-setup
-JSON-file mode with no other changes needed — useful if you ever want to demo offline.
-
-### Turning on real LLM-driven agents
-
-By default `AGENT_ENGINE=rule` — zero cost, zero setup, and every agent decision is still real
-(it reads the campaign's actual ICP/personas/criteria and the prospect's actual fields; nothing
-is hardcoded or random-only). To use real Anthropic-powered reasoning per PS Section 4 instead:
-
-```
-AGENT_ENGINE=llm
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-If the LLM call ever fails (bad key, rate limit, network), the engine automatically falls back to
-the rule engine for that one decision and logs a warning — the system never crashes or stalls
-because of it.
-
-## 3. Wiring up the frontend
-
-The frontend's own `src/services/api.js` already documents the seam: *"Backend swap: reimplement
-functions in `src/services/api.js` with `fetch()`; keep names and return shapes."* That's exactly
-what `frontend-integration/api.js` in this repo is — copy it over the frontend's
-`src/services/api.js`, then in the frontend project add a `.env`:
-
-```
-VITE_API_BASE_URL=http://localhost:8080/api
-```
-
-No screen, hook, or component changes are needed — every function name and return shape matches
-the mock exactly.
-
-## 4. Architecture overview
+## 3. Architecture overview
 
 ```
 Frontend (React/Vite)  →  REST API (src/routes)  →  Services (src/services)  →  JSON store (src/db)
                                                             │
-                                                            ├─ agentEngine/  → rule engine (default) or Anthropic API (llm mode)
+                                                            ├─ agentEngine/  → gemini / dronahq / anthropic, then the rule engine
                                                             ├─ rag.js        → campaign-scoped knowledge retrieval
                                                             ├─ conflict.js   → cross-campaign duplicate/suppression checks
                                                             └─ scheduler.js  → autonomous tick driving all of the above
@@ -174,7 +87,7 @@ Decisions are split into **matching** (geometry, free) and **judgment** (an LLM)
   added in the UI (`content`). Add and remove from the campaign page (`POST /campaigns/:id/sources`,
   `DELETE /campaigns/:id/sources/:sourceId`).
 
-## 5. API reference
+## 4. API reference
 
 All routes are mounted under `/api`. Request/response bodies mirror the frontend's
 `src/data/types.js` JSDoc typedefs exactly.
@@ -186,6 +99,8 @@ All routes are mounted under `/api`. Request/response bodies mirror the frontend
 | GET | `/campaigns/defaults` | `getCampaignDefaults` |
 | POST | `/campaigns` `{values, launch}` | `createCampaign` |
 | GET | `/campaigns/:id` | `getCampaign` |
+| POST | `/campaigns/:id/sources` `{name, category, content}` | `addCampaignSource` |
+| DELETE | `/campaigns/:id/sources/:sourceId` | `removeCampaignSource` |
 | POST | `/campaigns/:id/pause` | `pauseCampaign` |
 | POST | `/campaigns/:id/resume` | `resumeCampaign` |
 | POST | `/campaigns/:id/launch` | `launchCampaign` |
@@ -212,7 +127,7 @@ All routes are mounted under `/api`. Request/response bodies mirror the frontend
 | POST | `/settings/suppression` `{contact, reason}` | `addSuppression` |
 | GET | `/health` | — (liveness + which agent engine is active) |
 
-## 6. File / folder structure
+## 5. File / folder structure
 
 ```
 src/
@@ -231,23 +146,29 @@ src/
     logic.js                Lifecycle/scoping rules — ported from the frontend's src/services/logic.js
     constants.js            Stage/channel/lifecycle constants — ported from the frontend
     conflict.js             Cross-campaign conflict + suppression-list detection (PS Section 3)
-    rag.js                  Campaign-scoped knowledge chunking + TF-IDF retrieval (PS Section 4)
+    rag.js                  Campaign-scoped knowledge chunking + semantic retrieval (TF-IDF fallback)
+    embeddings.js           Local bge-small embeddings (fastembed)
+    replyRouter.js          Embedding-based routing of opt-out / hostile / out-of-office replies
+    usage.js                Daily LLM call cap, counters and cost estimate
     prospectGenerator.js    Synthetic lead discovery (stand-in for Apollo/equivalent)
     scheduler.js            The autonomous tick — the only place that drives agents end to end
     agentEngine/
       index.js               Dispatches to llmEngine or ruleEngine; attaches prompt/harness/RAG context
       ruleEngine.js           Deterministic default — real heuristics over real campaign/prospect fields
       llmEngine.js            Real Anthropic tool-calling per agent, structured JSON output
+      geminiEngine.js         Google Gemini with structured JSON, retries and model fallback
+      dronahqEngine.js        DronaHQ agents through their Webhook Triggers
   routes/index.js            REST routes — thin wrappers over services/data.js
   middleware/errors.js       Uniform error responses + async route wrapper
   utils/                     validation.js, format.js — ported from the frontend
 data/
-  knowledge/*.txt            Real knowledge base content (product one-pager, case study, objections)
+  knowledge/*.txt            Knowledge base documents, referenced per campaign by docId
+  knowledge/reply-examples.json  Canonical replies used by the reply router
   state.json                 Generated at runtime — the live datastore (gitignored)
-frontend-integration/api.js  Drop-in replacement for the frontend's src/services/api.js
+frontend-integration/api.js  Older copy of the frontend's api.js; frontend/src/services/api.js is the one in use
 ```
 
-## 7. What this deliberately does not include
+## 6. What this deliberately does not include
 
 Scoped to the problem statement's Sections 3 and 4 plus the Engineering Expectations in Section
 5 — nothing beyond what the frontend and PS actually call for:
