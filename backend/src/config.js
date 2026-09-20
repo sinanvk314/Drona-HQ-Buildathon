@@ -70,6 +70,9 @@ export const config = {
     secret: process.env.AUTH_SECRET || "",
     ttlHours: Number(process.env.AUTH_TTL_HOURS) || 168,
   },
+  // Meetings use real dates and times (a meeting is for people), in this time zone, for this long.
+  meetingTimezone: process.env.MEETING_TIMEZONE || "Asia/Kolkata",
+  meetingMinutes: Number(process.env.MEETING_MINUTES) || 30,
   // Simulated clock for cadence and working hours. Real sends do not exist yet, and a real 72-hour follow-up wait
   // cannot be shown in a demo, so one simulated hour lasts this many real milliseconds (3000 = a simulated day is
   // 72 seconds). Set it to 3600000 for real time. The daily limit and working hours use the same clock.

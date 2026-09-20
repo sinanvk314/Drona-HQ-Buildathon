@@ -12,7 +12,9 @@ import { newProspect } from "./prospects.js";
 import * as engine from "./agentEngine/index.js";
 import { classifyReply } from "./replyRouter.js";
 import { recordAvoided } from "./usage.js";
-import { recordTouch, touchLimit } from "./outreach.js";
+import { recordReply, recordTouch, touchLimit } from "./outreach.js";
+import { bookMeeting, proposeSlots, slotsText } from "./meetings.js";
+import { pickRep } from "./reps.js";
 import { outreachAllowed } from "./limits.js";
 import { describeIssues } from "./grounding.js";
 import { hoursToMs } from "./simTime.js";
@@ -502,128 +504,229 @@ function applyRoutedReply(s, campaign, prospect, routed) {
   });
 }
 
+// Does this reply go out without waiting for a human? Never if it failed the grounding check. A meeting proposal follows the
+// campaign's meeting-approval rule; a plain answer goes out on its own only in an Autonomous campaign. Escalations never do.
+function sendsItself(s, campaign, prospect, kind, groundingOk) {
+  if (!groundingOk) return false;
+  if (kind === "meeting") return !(campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok);
+  return campaign.approvals.level === "autonomous";
+}
+
+function escalate(s, campaign, prospect, { channel, title, body, draft, reasoning, harness, warnings = [] }) {
+  pushApproval(s, {
+    type: "escalation",
+    touchKind: "reply",
+    channel,
+    prospectId: prospect.id,
+    campaignId: campaign.id,
+    name: prospect.name,
+    company: prospect.company,
+    tag: title,
+    warnings,
+    tagTone: "danger",
+    summary: `Escalation — **${prospect.name}**: ${title.toLowerCase()}`,
+    recommendation: { title: body, body: reasoning },
+    draft: { subject: `Re: ${prospect.company}`, body: draft },
+    nextActionText: "Reply personally.",
+    source: `Escalated by Conversation Agent · ${harness}`,
+  });
+  prospect.lastAction = `${title}, {ago}`;
+  prospect.nextStep = "Human review";
+  addEvent(s, { campaignId: campaign.id, type: "escalate", text: `Conversation Agent escalated **${prospect.name}** — ${title.toLowerCase()}`, featured: false });
+}
+
+// A meeting time has been proposed and the prospect has answered it: book it, decline gracefully, offer other times, or
+// hand a request the SDR cannot meet to a human.
+async function answerProposal(s, campaign, prospect, { text, channel, conversationAgent }) {
+  const m = prospect.meeting;
+  const first = (prospect.name || "there").split(" ")[0];
+  const pick = await engine.resolveMeetingReply({ campaign, prospect, slots: m.slots, replyText: text, conversationAgent });
+  countOutcome(campaign, pick.declined ? "negative" : pick.choice >= 0 ? "positive" : "neutral");
+  addNote(prospect, { agent: "Conversation Agent", harness: pick.harness, engine: pick.engine, note: `Answer to the proposed times: ${pick.choice >= 0 ? `accepted ${m.slots[pick.choice].label}` : pick.declined ? "declined" : pick.alternative ? `asked for "${pick.alternative}"` : "unclear"}. ${pick.reasoning}` });
+
+  if (pick.choice >= 0) {
+    const slot = m.slots[pick.choice];
+    const rep = s.reps.find((r) => r.id === m.repId) || null;
+    bookMeeting(campaign, prospect, slot, rep);
+    prospect.stage = "meeting";
+    prospect.lastAction = "Meeting booked, {ago}";
+    prospect.nextStep = "Prep for call";
+    campaign.funnel.meeting += 1;
+    recordReply(s, campaign, prospect, {
+      channel,
+      body: `Wonderful, ${first}. You are booked for ${slot.label}${rep ? ` with ${rep.name}` : ""}. A calendar invite is attached with the details. Looking forward to speaking.`,
+    });
+    prospect.nextStep = "Prep for call";
+    pushDecision(s, {
+      kind: "meeting",
+      campaignId: campaign.id,
+      prospectId: prospect.id,
+      agent: "Conversation & Follow-up Agent",
+      harness: pick.harness,
+      engine: pick.engine,
+      headline: `Meeting booked — ${prospect.name}, ${prospect.company}: ${slot.label}`,
+      summary: `Conversation Agent booked **${prospect.name}**, ${prospect.company} for ${slot.label}${rep ? ` with ${rep.name}` : ""}`,
+      evidence: [`The prospect's reply: "${text.slice(0, 160)}"`, pick.reasoning, `Offered ${m.slots.length} times inside ${rep ? `${rep.name}'s` : "the campaign's"} working hours; ${slot.label} was free on the calendar`],
+      instruction: "Book a time only when the prospect clearly accepts one of the times that were offered.",
+      finalAction: "Record the meeting, send the confirmation and the calendar invite",
+    });
+    addEvent(s, { campaignId: campaign.id, type: "meeting", text: `Conversation Agent booked a meeting with **${prospect.name}** (${prospect.company}) for ${slot.label}`, featured: true });
+    return { handled: "meeting-booked", slot };
+  }
+
+  if (pick.declined) {
+    m.status = "declined";
+    recordReply(s, campaign, prospect, { channel, body: `Understood, ${first}, and thank you for letting me know. I will not follow up on this. If it becomes useful later, you know where to find us.` });
+    prospect.nextStep = "Closed: declined the meeting";
+    return { handled: "declined" };
+  }
+
+  const wantsOther = Boolean(pick.alternative);
+  m.clarifications = (m.clarifications || 0) + 1;
+  if (wantsOther && m.rounds < 2) {
+    const rep = s.reps.find((r) => r.id === m.repId) || null;
+    const slots = proposeSlots(s, { rep, campaign, exclude: m.slots.map((x) => x.start) });
+    if (slots.length) {
+      prospect.meeting = { ...m, slots, rounds: m.rounds + 1 };
+      recordReply(s, campaign, prospect, { channel, body: `Thanks, ${first}. I cannot offer exactly that, but these times are free:\n${slotsText(slots)}\nWould any of them work?` });
+      return { handled: "meeting-reproposed" };
+    }
+  }
+  if (!wantsOther && m.clarifications < 3) {
+    recordReply(s, campaign, prospect, { channel, body: `Sorry, ${first}, I was not sure which time you meant. Which of these works?\n${slotsText(m.slots)}` });
+    return { handled: "meeting-clarified" };
+  }
+  escalate(s, campaign, prospect, {
+    channel, title: "Needs a different meeting time",
+    body: wantsOther ? `${prospect.name} asked for "${pick.alternative}", which the SDR cannot offer.` : `${prospect.name}'s answers to the proposed times were unclear.`,
+    draft: `Hi ${first}, thanks for your reply. ${wantsOther ? `A colleague will confirm a time that suits you directly.` : `A colleague will reach out to agree a time with you.`}`,
+    reasoning: pick.reasoning, harness: pick.harness,
+  });
+  return { handled: "escalated" };
+}
+
+// Everything that happens when a prospect replies, whoever wrote the reply: the simulator, or a real person in the Dev sandbox.
+//   clear opt-outs and auto-replies -> the router, no LLM
+//   an answer to proposed meeting times -> pick, book, offer other times, or escalate
+//   anything else -> the Conversation agent: meet (propose times), escalate, or answer
+export async function processReply(s, campaign, prospect, { text, channel, kind = "reply" }) {
+  const conversationAgent = agentById(s, "conversation");
+  prospect.conversation.push({ dir: "in", text, when: "Today", channel });
+  prospect.nextTouchTs = null; // a reply ends the follow-up sequence
+
+  const routed = await classifyReply(text);
+  if (routed.deterministic) {
+    applyRoutedReply(s, campaign, prospect, routed);
+    prospect.lastTs = Date.now();
+    return { handled: "routed", category: routed.category };
+  }
+
+  prospect.history.push({ kind: channel === "email" ? "email" : "chat", text: `Reply received on ${channel} — ${kind}`, when: "Today" });
+  if (prospect.stage === "contacted") {
+    prospect.stage = "engaged";
+    campaign.funnel.engaged += 1;
+  }
+  campaign.outreach.replies += 1;
+
+  try {
+    if (prospect.meeting && prospect.meeting.status === "proposed") {
+      const r = await answerProposal(s, campaign, prospect, { text, channel, conversationAgent });
+      prospect.lastTs = Date.now();
+      return r;
+    }
+    if (prospect.meeting && prospect.meeting.status === "confirmed") {
+      addNote(prospect, { agent: "Conversation Agent", note: `Reply after the meeting was booked: "${text.slice(0, 120)}". A human should read it.` });
+      prospect.lastTs = Date.now();
+      return { handled: "after-booking" };
+    }
+
+    const result = await engine.handleConversation({ campaign, prospect, conversationAgent });
+    countOutcome(campaign, result.action === "meeting" ? "positive" : "neutral");
+    addNote(prospect, { agent: "Conversation Agent", harness: result.harness, engine: result.engine, note: `Reply on ${channel}: ${result.action}. ${result.reasoning}` });
+    const warnings = describeIssues(result.grounding.issues);
+
+    if (result.action === "escalate") {
+      escalate(s, campaign, prospect, {
+        channel, title: "Escalation: objection needs a human", body: "Respond personally — this needs a compliance-accurate answer.",
+        draft: result.draft || "Draft this reply personally using the objection-handling playbook.", reasoning: result.reasoning, harness: result.harness, warnings,
+      });
+      return { handled: "escalated" };
+    }
+
+    if (result.action === "meeting") {
+      const rep = pickRep(s, campaign, channel, { preferId: prospect.repId, strict: false });
+      const slots = proposeSlots(s, { rep, campaign });
+      if (!slots.length) {
+        escalate(s, campaign, prospect, { channel, title: "No free meeting time", body: "The prospect wants to meet but no free time was found.", draft: result.draft, reasoning: result.reasoning, harness: result.harness, warnings });
+        return { handled: "escalated" };
+      }
+      const body = `${(result.draft || `Thanks, ${prospect.name.split(" ")[0]}. I would be glad to set up a call.`).trim()}\n\nWould any of these work?\n${slotsText(slots)}`;
+      const meeting = { status: "proposed", slots, rounds: 1, repId: rep ? rep.id : null, channel, proposedTs: Date.now(), clarifications: 0 };
+      if (sendsItself(s, campaign, prospect, "meeting", result.grounding.ok)) {
+        prospect.meeting = meeting;
+        recordReply(s, campaign, prospect, { channel, body });
+        pushDecision(s, {
+          kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine,
+          headline: `Meeting times offered — ${prospect.name}, ${prospect.company}`,
+          summary: `Conversation Agent offered **${prospect.name}**, ${prospect.company} ${slots.length} times: ${slots.map((x) => x.label).join("; ")}`,
+          evidence: [result.reasoning, `Times are free on ${rep ? `${rep.name}'s` : "the campaign's"} calendar, inside working hours, on different days`],
+          retrieved: result.retrieved, instruction: result.instruction, finalAction: "Send the proposal and wait for the prospect to choose",
+        });
+        return { handled: "meeting-proposed", slots };
+      }
+      prospect.meeting = { ...meeting, status: "pending-approval" };
+      pushApproval(s, {
+        type: "meeting", touchKind: "reply", meetingProposal: true, channel, prospectId: prospect.id, campaignId: campaign.id, name: prospect.name, company: prospect.company,
+        tag: "Propose meeting times", warnings, tagTone: "neutral", summary: `Propose meeting times — **${prospect.name}**, ${prospect.company}`,
+        recommendation: { title: "Send these meeting times.", body: result.reasoning }, draft: { subject: `Re: ${prospect.company}`, body },
+        nextActionText: "Send the proposal with these times.", source: `Recommended by Conversation Agent · ${result.harness}`,
+      });
+      prospect.lastAction = "Replied — wants to meet, {ago}";
+      prospect.nextStep = "Awaiting approval";
+      return { handled: "meeting-awaiting-approval" };
+    }
+
+    // A question or interest that knowledge lets us answer.
+    const answer = result.draft || "Thanks for the reply — following up with the details requested.";
+    if (sendsItself(s, campaign, prospect, "answer", result.grounding.ok)) {
+      recordReply(s, campaign, prospect, { channel, body: answer });
+      pushDecision(s, {
+        kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine,
+        headline: `Answered — ${prospect.name}, ${prospect.company}`, summary: `Conversation Agent answered **${prospect.name}**, ${prospect.company}`,
+        evidence: [result.reasoning, groundingLine(result.grounding)], retrieved: result.retrieved, instruction: result.instruction, finalAction: "Send the answer",
+      });
+      return { handled: "answered" };
+    }
+    pushApproval(s, {
+      type: "followup", touchKind: "reply", channel, prospectId: prospect.id, campaignId: campaign.id, name: prospect.name, company: prospect.company,
+      tag: "Send follow-up email", warnings, tagTone: "neutral", summary: `Send follow-up email — **${prospect.name}**, ${prospect.company}`,
+      recommendation: { title: "Send a contextual follow-up.", body: result.reasoning }, draft: { subject: `Re: ${prospect.company}`, body: answer },
+      nextActionText: "Send a follow-up addressing what the prospect asked.", source: `Recommended by Conversation Agent · ${result.harness}`,
+    });
+    prospect.nextStep = "Awaiting approval";
+    return { handled: "answer-awaiting-approval" };
+  } catch (e) {
+    recordFailure(s, campaign, prospect, "Conversation", e);
+    return { handled: "failed", error: e.message };
+  } finally {
+    prospect.lastTs = Date.now();
+  }
+}
+
+// The simulated replies: each tick a contacted prospect who has not replied has a small chance of writing back.
 async function runConversation(s, campaign) {
   if (!agentEnabled(s, "conversation", campaign)) return;
-  const conversationAgent = agentById(s, "conversation");
   const contacted = s.prospects.filter(
-    (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out")
+    (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out") && !p.sandboxHuman
   );
-
   let handled = 0;
   for (const prospect of contacted) {
     if (handled >= config.schedulerBatchSize) break; // caps the agent calls per tick, not who may reply
     if (Math.random() >= config.simReplyChance) continue; // most prospects stay silent on any given tick
     handled += 1;
-    const replyChannel = (prospect.touches.at(-1) || {}).channel || "email";
-    const { text: replyText, kind: replyKind } = simulateReply();
-    prospect.conversation.push({ dir: "in", text: replyText, when: "Today", channel: replyChannel });
-    prospect.nextTouchTs = null; // a reply ends the follow-up sequence
-
-    // Matching before judgment: clear-cut opt-outs and auto-replies are settled by embedding
-    // similarity to canonical examples, with no LLM call. Everything else goes to the agent below.
-    const routed = await classifyReply(replyText);
-    if (routed.deterministic) {
-      applyRoutedReply(s, campaign, prospect, routed);
-      prospect.lastTs = Date.now();
-      continue;
-    }
-
-    prospect.history.push({ kind: replyChannel === "email" ? "email" : "chat", text: `Reply received on ${replyChannel} — ${replyKind}`, when: "Today" });
-    prospect.stage = "engaged";
-    campaign.funnel.engaged += 1;
-    campaign.outreach.replies += 1;
-
-    try {
-      const result = await engine.handleConversation({ campaign, prospect, conversationAgent });
-      countOutcome(campaign, result.action === "meeting" ? "positive" : "neutral");
-      addNote(prospect, { agent: "Conversation Agent", harness: result.harness, engine: result.engine, note: `Reply on ${replyChannel}: ${result.action}. ${result.reasoning}` });
-      if (result.action === "escalate") {
-        pushApproval(s, {
-          type: "escalation",
-          touchKind: "reply",
-          channel: replyChannel,
-          prospectId: prospect.id,
-          campaignId: campaign.id,
-          name: prospect.name,
-          company: prospect.company,
-          tag: "Escalation: objection needs a human",
-          warnings: describeIssues(result.grounding.issues),
-          tagTone: "danger",
-          summary: `Escalation — **${prospect.name}** raised an objection`,
-          recommendation: { title: "Respond personally — this needs a compliance-accurate answer.", body: result.reasoning },
-          draft: { subject: `Re: ${prospect.company}`, body: result.draft || "Draft this reply personally using the objection-handling playbook." },
-          nextActionText: "Reply personally using the objection-handling playbook.",
-          source: `Escalated by Conversation Agent · ${result.harness}`,
-        });
-        prospect.lastAction = "Objection raised, {ago}";
-        prospect.nextStep = "Human review";
-        addEvent(s, { campaignId: campaign.id, type: "escalate", text: `Conversation Agent escalated **${prospect.name}** — needs human input`, featured: false });
-      } else if (result.action === "meeting") {
-        if ((campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok) || !result.grounding.ok) {
-          pushApproval(s, {
-            type: "meeting",
-            touchKind: "reply",
-            channel: replyChannel,
-            prospectId: prospect.id,
-            campaignId: campaign.id,
-            name: prospect.name,
-            company: prospect.company,
-            tag: "Book meeting",
-            warnings: describeIssues(result.grounding.issues),
-            tagTone: "neutral",
-            summary: `Book meeting — **${prospect.name}**, ${prospect.company}`,
-            recommendation: { title: "Confirm the proposed time.", body: result.reasoning },
-            draft: { subject: "Meeting time", body: result.draft || "Confirming the proposed meeting time and sending a calendar invite." },
-            nextActionText: "Confirm the meeting time and send a calendar invite.",
-            source: `Recommended by Conversation Agent · ${result.harness}`,
-          });
-          prospect.lastAction = "Replied — wants to meet, {ago}";
-          prospect.nextStep = "Awaiting approval";
-        } else {
-          prospect.stage = "meeting";
-          prospect.lastAction = "Meeting booked, {ago}";
-          prospect.nextStep = "Prep for call";
-          campaign.funnel.meeting += 1;
-          pushDecision(s, {
-            kind: "meeting",
-            campaignId: campaign.id,
-            prospectId: prospect.id,
-            agent: "Conversation & Follow-up Agent",
-            harness: result.harness,
-            engine: result.engine,
-            headline: `Meeting booked — ${prospect.name}, ${prospect.company}`,
-            summary: `Conversation Agent booked a meeting with **${prospect.name}**, ${prospect.company}`,
-            evidence: [result.reasoning],
-            retrieved: result.retrieved,
-            instruction: result.instruction,
-            finalAction: "Create calendar event and notify the campaign owner",
-          });
-          addEvent(s, { campaignId: campaign.id, type: "meeting", text: `Conversation Agent booked a meeting with **${prospect.name}** (${prospect.company})`, featured: true });
-        }
-      } else {
-        pushApproval(s, {
-          type: "followup",
-          touchKind: "reply",
-          channel: replyChannel,
-          prospectId: prospect.id,
-          campaignId: campaign.id,
-          name: prospect.name,
-          company: prospect.company,
-          tag: "Send follow-up email",
-          warnings: describeIssues(result.grounding.issues),
-          tagTone: "neutral",
-          summary: `Send follow-up email — **${prospect.name}**, ${prospect.company}`,
-          recommendation: { title: "Send a contextual follow-up.", body: result.reasoning },
-          draft: { subject: `Re: ${prospect.company}`, body: result.draft || "Thanks for the reply — following up with the details requested." },
-          nextActionText: "Send a follow-up addressing what the prospect asked.",
-          source: `Recommended by Conversation Agent · ${result.harness}`,
-        });
-        prospect.nextStep = "Awaiting approval";
-      }
-    } catch (e) {
-      recordFailure(s, campaign, prospect, "Conversation", e);
-    }
-    prospect.lastTs = Date.now();
+    const channel = (prospect.touches.at(-1) || {}).channel || "email";
+    const { text, kind } = simulateReply();
+    await processReply(s, campaign, prospect, { text, channel, kind });
   }
 }
 

@@ -13,7 +13,7 @@ import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
 import { SDR_STEPS } from "./sdrSteps.js";
-import { recordTouch } from "./outreach.js";
+import { recordReply, recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
 import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
 import { parseWorkingHours, simClockLabel, withinWorkingHours } from "./simTime.js";
@@ -377,6 +377,14 @@ export function getLaunchReview(id) {
   return { id: c.id, name: c.name, status: c.status, ready: !checks.some((k) => k.status === "block"), checks };
 }
 
+/** The calendar invite (.ics) for a booked meeting. */
+export function getMeetingIcs(prospectId) {
+  const p = getState().prospects.find((x) => x.id === prospectId);
+  if (!p) throw new Error("Prospect not found.");
+  if (!p.meeting || p.meeting.status !== "confirmed") throw new Error("No meeting is booked for this prospect.");
+  return p.meeting.ics;
+}
+
 export function getProspects() {
   const s = getState();
   return s.prospects.map((p) => prospectRow(s, p));
@@ -697,6 +705,10 @@ export function decideApproval(id, { action, reason = "" } = {}) {
             body: (a.draft && a.draft.body) || "",
             ts: now,
           });
+        } else if (a.meetingProposal) {
+          // The approved proposal is what the prospect now sees; their answer is read against these times.
+          recordReply(s, c, p, { channel: a.channel || (c.channels && c.channels[0]) || "email", body: (a.draft && a.draft.body) || "" });
+          if (p.meeting) p.meeting.status = "proposed";
         } else {
           const o = OUTCOMES[a.type];
           // The approved (possibly edited) draft is what actually goes out, so keep it in the conversation.
@@ -713,6 +725,7 @@ export function decideApproval(id, { action, reason = "" } = {}) {
         p.lastAction = "Action rejected, {ago}";
         // A rejected follow-up ends the sequence; a rejected opening message goes back for a redraft.
         p.nextStep = a.touchKind === "cadence" ? "Follow-up rejected: sequence stopped" : "Needs rework";
+        if (a.meetingProposal) p.meeting = null; // the proposal was never sent
       }
       p.lastTs = now;
     }

@@ -122,6 +122,16 @@ Rules:
 4. facts: 2 to 4 short, specific, plausible facts about each person (a role held, an activity, something recent). attributes: any other useful key/value details (for example college, year, club).
 5. size describes the organisation in plain words (for example "120 employees" or "about 3,000 students").`;
 
+const MEETING_REPLY_SYSTEM = `You read a prospect's reply to meeting times that an SDR proposed, and say what the reply means.
+
+The user message is a JSON object with: slots (each has an index, and a label such as "Tue 22 Sept 11:00 am IST"), reply (the prospect's message), and conversation (earlier messages).
+
+Rules:
+1. choice is the 0-based index of the slot the prospect clearly accepted, or -1. Choose a slot only when the reply clearly accepts one of the offered times. If it is ambiguous, or accepts nothing specific, choose -1.
+2. declined is true only if the prospect says they do not want the meeting.
+3. alternative is the different day or time the prospect asks for instead, quoted from the reply, or an empty string.
+4. reasoning is one sentence.`;
+
 // ---- response schemas (Gemini's OpenAPI-subset; upper-case type names) --------------------------
 
 const S = { type: "STRING" };
@@ -191,6 +201,12 @@ const SOURCE_SCHEMA = {
     },
   },
   required: ["candidates"],
+};
+
+const MEETING_REPLY_SCHEMA = {
+  type: "OBJECT",
+  properties: { choice: { type: "INTEGER" }, declined: { type: "BOOLEAN" }, alternative: S, reasoning: S },
+  required: ["choice", "declined", "alternative", "reasoning"],
 };
 
 const strategySchema = (allowed, maxTouches) => ({
@@ -427,4 +443,15 @@ export async function geminiSourceProspects({ campaign, count, avoid = [] }) {
   const input = { campaign: { ...campaignBlock(campaign), company_criteria: campaign.companyCriteria, exclusion_criteria: campaign.exclusionCriteria }, count, avoid };
   const out = await generate({ agent: "lead", campaignId: campaign.id, system: SOURCE_SYSTEM, input, schema: SOURCE_SCHEMA });
   return normalizeCandidates(out, { count, avoid });
+}
+
+export function normalizeMeetingReply(o, slotCount) {
+  const choice = Number.isInteger(o.choice) && o.choice >= 0 && o.choice < slotCount ? o.choice : -1;
+  return { choice, declined: !!o.declined && choice === -1, alternative: choice === -1 ? String(o.alternative || "").trim().slice(0, 200) : "", reasoning: String(o.reasoning || "").trim() };
+}
+
+export async function geminiResolveMeetingReply({ campaign, prospect, slots, replyText }) {
+  const input = { slots: slots.map((s, i) => ({ index: i, label: s.label })), reply: replyText, conversation: (prospect.conversation || []).slice(-6) };
+  const out = await generate({ agent: "conversation", campaignId: campaign.id, system: MEETING_REPLY_SYSTEM, input, schema: MEETING_REPLY_SCHEMA });
+  return normalizeMeetingReply(out, slots.length);
 }

@@ -49,3 +49,15 @@ export function recordTouch(state, campaign, prospect, { channel, kind, subject 
   prospect.nextTouchTs = n < touchLimit(campaign, prospect) ? ts + hoursToMs(waitHours) : null;
   return n;
 }
+
+/** A reply to something a prospect wrote (not a cadence touch: it does not count towards the touch limit). */
+export function recordReply(state, campaign, prospect, { channel, body }) {
+  const rep = pickRep(state, campaign, channel, { preferId: prospect.repId }) || pickRep(state, campaign, channel, { preferId: prospect.repId, strict: false });
+  if (rep) prospect.repId = rep.id;
+  prospect.conversation.push({ dir: "out", text: body, when: "Today", channel, sender: rep ? rep.name : undefined });
+  prospect.history.push({ kind: channel === "email" ? "email" : "chat", text: `Reply sent on ${channel}`, when: "Today" });
+  campaign.outreach.followups += 1;
+  prospect.lastAction = `Replied on ${channel}, {ago}`;
+  prospect.nextStep = "Awaiting reply";
+  prospect.lastTs = Date.now();
+}

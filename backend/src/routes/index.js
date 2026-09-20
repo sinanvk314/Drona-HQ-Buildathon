@@ -56,6 +56,9 @@ router.post("/campaigns/:id/reps", asyncRoute(async (req, res) => res.json(data.
 
 // ---- prospects ---------------------------------------------------------------
 router.get("/prospects", asyncRoute(async (req, res) => res.json(data.getProspects())));
+router.get("/prospects/:id/meeting.ics", asyncRoute(async (req, res) => {
+  res.type("text/calendar").set("Content-Disposition", 'attachment; filename="meeting.ics"').send(data.getMeetingIcs(req.params.id));
+}));
 router.get("/prospects/:id", asyncRoute(async (req, res) => res.json(data.getProspect(req.params.id))));
 
 // ---- decisions (Decision Journal) --------------------------------------------

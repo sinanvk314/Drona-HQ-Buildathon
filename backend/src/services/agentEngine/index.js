@@ -9,6 +9,7 @@ import * as gemini from "./geminiEngine.js";
 import { retrieve } from "../rag.js";
 import { checkGrounding, describeIssues } from "../grounding.js";
 import { composePrompt } from "../prompts.js";
+import { readReplyRule } from "../meetings.js";
 import { capReached, recordAvoided, recordLlmDecision, recordLlmError, recordRuleFallback } from "../usage.js";
 
 // What the agent is given for this campaign: the campaign system prompt + the version the campaign is pinned to.
@@ -205,6 +206,18 @@ export async function handleConversation({ campaign, prospect, conversationAgent
   };
   const result = await groundedRun(run, (r) => checkGrounding({ text: r.draft || "", knowledge, prospect, campaign, confirmsMeeting: r.action === "meeting" }));
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
+}
+
+/** What a prospect's reply to proposed meeting times means: which slot they took, a decline, or a request for another time. */
+export async function resolveMeetingReply({ campaign, prospect, slots, replyText, conversationAgent }) {
+  const { harness } = activePromptFor(conversationAgent, campaign);
+  const result = await withFallback(
+    null,
+    () => readReplyRule(replyText, slots),
+    null,
+    () => gemini.geminiResolveMeetingReply({ campaign, prospect, slots, replyText })
+  );
+  return { ...result, harness };
 }
 
 export function enrich({ prospect }) {
