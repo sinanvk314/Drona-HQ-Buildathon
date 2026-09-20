@@ -3,6 +3,7 @@ import Shell from "../components/shell/Shell.jsx";
 import { useNav } from "../components/shell/NavContext.jsx";
 import CampaignCard from "../components/features/CampaignCard.jsx";
 import Funnel from "../components/ui/Funnel.jsx";
+import EfficiencyPanel from "../components/features/EfficiencyPanel.jsx";
 import Icon from "../components/ui/Icon.jsx";
 import RichText from "../components/ui/RichText.jsx";
 import { Tag } from "../components/ui/Badge.jsx";
@@ -95,6 +96,8 @@ export default function CommandCenter({ routeName }) {
             ))}
           </div>
         </div>
+
+        <EfficiencyPanel u={data.efficiency} />
 
         <div className="card" style={{ padding: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Overall Funnel — All Campaigns</div>

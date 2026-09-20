@@ -50,6 +50,7 @@ async function request(path, { method = "GET", body } = {}) {
 
 const get = (path) => request(path);
 const post = (path, body) => request(path, { method: "POST", body: body ?? {} }).then((r) => (emit(), r));
+const del = (path) => request(path, { method: "DELETE" }).then((r) => (emit(), r));
 const patch = (path, body) => request(path, { method: "PATCH", body: body ?? {} }).then((r) => (emit(), r));
 
 // ---------------------------------------------------------------- reads
@@ -74,6 +75,10 @@ export const launchCampaign = (id) => post(`/campaigns/${id}/launch`);
 export const completeCampaign = (id) => post(`/campaigns/${id}/complete`);
 export const archiveCampaign = (id) => post(`/campaigns/${id}/archive`);
 export const createCampaign = (values, { launch = false } = {}) => post("/campaigns", { values, launch });
+
+// Knowledge sources of an existing campaign: `content` is the text agents retrieve from.
+export const addCampaignSource = (id, { name, category, content }) => post(`/campaigns/${id}/sources`, { name, category, content });
+export const removeCampaignSource = (id, sourceId) => del(`/campaigns/${id}/sources/${sourceId}`);
 
 // ---------------------------------------------------------------- approvals
 export const decideApproval = (id, { action, reason = "" } = {}) => post(`/approvals/${id}/decide`, { action, reason });

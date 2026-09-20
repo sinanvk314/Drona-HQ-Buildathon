@@ -16,6 +16,17 @@ const KIND_DOT = {
   strategy: "var(--accent)",
 };
 
+// Who actually made the call. Matching (no LLM) versus judgment (an LLM) is the cost story, so it is shown.
+const ENGINE_LABEL = {
+  gemini: "Gemini",
+  dronahq: "DronaHQ",
+  llm: "Claude",
+  rule: "Rule engine",
+  "rule-shortcut": "Rule shortcut · no LLM call",
+  "embedding-router": "Embedding router · no LLM call",
+  "auto-approval": "Auto-approved by policy",
+};
+
 function Gutter({ first, last, expanded, color }) {
   return (
     <div style={{ width: 14, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -38,6 +49,7 @@ function ExpandedCard({ d, onCollapse }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <Tag tone="accent">{d.agent}</Tag>
         <Tag>{d.harness}</Tag>
+        {d.engine && <Tag tone={d.engine === "rule" ? undefined : "accent"}>{ENGINE_LABEL[d.engine] || d.engine}</Tag>}
         <div style={{ flexGrow: 1 }} />
         <div style={{ fontSize: 12, color: "var(--text-3)" }}>{clockLabel(d.ts)}</div>
         <button type="button" className="link" style={{ fontSize: 12, color: "var(--text-3)" }} onClick={onCollapse} aria-label="Collapse decision">

@@ -10,6 +10,7 @@ import { ACTION_LABEL, useCampaignActions } from "../hooks/useCampaignActions.js
 import { getCampaign } from "../services/api.js";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
+import KnowledgePanel from "../components/campaign/KnowledgePanel.jsx";
 
 const LABEL = { fontSize: 10.5, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.04em" };
 
@@ -144,6 +145,8 @@ export default function CampaignDetail({ params }) {
             ))}
           </div>
         </div>
+
+        <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} />
 
         <div className="card">
           <div style={{ padding: "18px 20px 4px 20px", fontSize: 14, fontWeight: 700 }}>Prospects</div>

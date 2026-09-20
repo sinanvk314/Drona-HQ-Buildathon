@@ -28,9 +28,3 @@ export function validateSuppression(v) {
   if (!(v.reason || "").trim()) e.reason = "Enter a reason.";
   return e;
 }
-
-export function validateSource(v) {
-  const e = {};
-  if (!(v.name || "").trim()) e.name = "Enter a source name.";
-  return e;
-}

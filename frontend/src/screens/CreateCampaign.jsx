@@ -3,13 +3,14 @@ import Shell from "../components/shell/Shell.jsx";
 import { useNav } from "../components/shell/NavContext.jsx";
 import Icon from "../components/ui/Icon.jsx";
 import { Badge, Tag } from "../components/ui/Badge.jsx";
-import { Modal } from "../components/ui/Modal.jsx";
 import Toggle from "../components/ui/Toggle.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { createCampaign, getCampaignDefaults } from "../services/api.js";
 import { CHANNEL_KEYS, CHANNEL_LABELS } from "../data/constants.js";
-import { validateCampaign, validateSource } from "../utils/validation.js";
+import { validateCampaign } from "../utils/validation.js";
+import AddSourceModal from "../components/campaign/AddSourceModal.jsx";
+import ApprovalLevel from "../components/campaign/ApprovalLevel.jsx";
 
 const CHANNEL_ICON = { email: "mail", linkedin: "chat", sms: "chat", voice: "phone" };
 const APPROVAL_ROWS = [
@@ -17,7 +18,6 @@ const APPROVAL_ROWS = [
   ["meetingTime", "Require approval before proposing a meeting time"],
   ["escalate", "Escalate to a human on any detected objection or negative sentiment"],
 ];
-const SOURCE_CATEGORIES = ["Product info", "Case study", "Objections", "Other"];
 
 function Field({ label, htmlFor, error, hint, children }) {
   return (
@@ -73,8 +73,6 @@ export default function CreateCampaign() {
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [addingSource, setAddingSource] = useState(false);
-  const [source, setSource] = useState({ name: "", category: SOURCE_CATEGORIES[0] });
-  const [sourceErrors, setSourceErrors] = useState({});
 
   useEffect(() => {
     if (defaults && !v) setV(defaults);
@@ -119,14 +117,11 @@ export default function CreateCampaign() {
     }
   };
 
-  const addSource = () => {
-    const errs = validateSource(source);
-    setSourceErrors(errs);
-    if (Object.keys(errs).length) return;
-    setV((p) => ({ ...p, sources: [...p.sources, { id: `s${Date.now()}`, name: source.name.trim(), category: source.category }] }));
-    setSource({ name: "", category: SOURCE_CATEGORIES[0] });
+  const addSource = ({ name, category, content }) => {
+    setV((p) => ({ ...p, sources: [...p.sources, { id: `s${Date.now()}`, name, category, content }] }));
     setAddingSource(false);
   };
+  const removeSource = (id) => setV((p) => ({ ...p, sources: p.sources.filter((x) => x.id !== id) }));
 
   const footer = (
     <div
@@ -239,6 +234,7 @@ export default function CreateCampaign() {
               </div>
             ))}
           </div>
+          <ApprovalLevel value={v.approvals} onChange={(a) => set("approvals", a)} />
         </div>
 
         <div className="card" style={{ padding: 22 }}>
@@ -252,9 +248,13 @@ export default function CreateCampaign() {
                 <Icon name="file" size={16} color="var(--text-3)" />
                 <div style={{ flexGrow: 1, fontSize: 13 }}>{s.name}</div>
                 <Tag>{s.category}</Tag>
+                <button type="button" className="link" aria-label={`Remove ${s.name}`} title="Remove this source" style={{ display: "flex", color: "var(--text-3)" }} onClick={() => removeSource(s.id)}>
+                  <Icon name="xcircle" size={16} stroke={1.7} />
+                </button>
               </div>
             ))}
-            <button type="button" className="btn btn-secondary" style={{ alignSelf: "flex-start", marginTop: 4 }} onClick={() => { setSourceErrors({}); setAddingSource(true); }}>
+            {v.sources.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>No knowledge sources. Agents will have nothing to retrieve from.</div>}
+            <button type="button" className="btn btn-secondary" style={{ alignSelf: "flex-start", marginTop: 4 }} onClick={() => setAddingSource(true)}>
               <Icon name="plus" size={12} stroke={2} />
               Add Source
             </button>
@@ -262,29 +262,7 @@ export default function CreateCampaign() {
         </div>
       </div>
 
-      {addingSource && (
-        <Modal
-          title="Add knowledge source"
-          onClose={() => setAddingSource(false)}
-          footer={
-            <>
-              <button type="button" className="btn btn-secondary" onClick={() => setAddingSource(false)}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={addSource}>Add Source</button>
-            </>
-          }
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field label="Source name" htmlFor="src-name" error={sourceErrors.name}>
-              <input id="src-name" className={`input ${sourceErrors.name ? "error" : ""}`} value={source.name} onChange={(e) => setSource({ ...source, name: e.target.value })} placeholder="e.g. Pricing FAQ.pdf" />
-            </Field>
-            <Field label="Type" htmlFor="src-cat">
-              <select id="src-cat" className="input" value={source.category} onChange={(e) => setSource({ ...source, category: e.target.value })}>
-                {SOURCE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </Field>
-          </div>
-        </Modal>
-      )}
+      {addingSource && <AddSourceModal onClose={() => setAddingSource(false)} onAdd={addSource} />}
     </Shell>
   );
 }
