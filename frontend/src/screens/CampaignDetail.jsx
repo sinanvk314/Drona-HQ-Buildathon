@@ -11,6 +11,7 @@ import { archiveCampaign, completeCampaign, duplicateCampaign, getCampaign } fro
 import { ConfirmDialog } from "../components/ui/Modal.jsx";
 import CampaignAgentsPanel from "../components/campaign/CampaignAgentsPanel.jsx";
 import CampaignActivity from "../components/campaign/CampaignActivity.jsx";
+import LaunchReviewModal from "../components/campaign/LaunchReviewModal.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
@@ -24,6 +25,7 @@ export default function CampaignDetail({ params }) {
   const act = useCampaignActions();
   const toast = useToast();
   const [confirm, setConfirm] = useState(null); // "complete" | "archive"
+  const [reviewing, setReviewing] = useState(!!params.review); // the pre-launch review
   const { data: c, error } = useApi(() => getCampaign(params.id), [params.id]);
   const crumbs = [{ label: "Campaigns", onClick: () => navigate("campaigns") }];
 
@@ -90,9 +92,9 @@ export default function CampaignDetail({ params }) {
               className={`btn ${c.action === "pause" ? "btn-danger-outline" : "btn-primary"}`}
               disabled={c.locked}
               title={c.locked ? "The Global Kill Switch is active" : undefined}
-              onClick={() => act(c.id, c.action)}
+              onClick={() => (c.action === "launch" ? setReviewing(true) : act(c.id, c.action))}
             >
-              {ACTION_LABEL[c.action]} Campaign
+              {c.action === "launch" ? "Review & Launch" : `${ACTION_LABEL[c.action]} Campaign`}
             </button>
           )}
         </div>
@@ -233,6 +235,16 @@ export default function CampaignDetail({ params }) {
           danger
           onConfirm={finish}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+      {reviewing && (
+        <LaunchReviewModal
+          campaignId={c.id}
+          onClose={() => setReviewing(false)}
+          onLaunch={async () => {
+            setReviewing(false);
+            await act(c.id, "launch");
+          }}
         />
       )}
     </Shell>

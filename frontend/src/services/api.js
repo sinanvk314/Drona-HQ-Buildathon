@@ -76,6 +76,7 @@ export const getShellState = () => get("/shell");
 export const getCommandCenter = () => get("/command-center");
 export const getCampaign = (id) => get(`/campaigns/${id}`);
 export const getCampaignDefaults = () => get("/campaigns/defaults");
+export const getLaunchReview = (id) => get(`/campaigns/${id}/launch-review`);
 export const getCampaignConfig = (id) => get(`/campaigns/${id}/config`);
 export const getProspects = () => get("/prospects");
 export const getProspect = (id) => get(`/prospects/${id}`);

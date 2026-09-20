@@ -300,6 +300,69 @@ export function getComparison(ids) {
   });
 }
 
+const CORE_AGENTS = ["icp", "strategy", "personalisation", "conversation", "followup"];
+
+/**
+ * What a manager should see before activating a campaign (PS design question). Each check is ok, warn (can proceed,
+ * worth knowing) or block (cannot launch until fixed).
+ */
+export function getLaunchReview(id) {
+  const s = getState();
+  const c = campaignOf(s, id);
+  const checks = [];
+  const add = (key, label, status, detail) => checks.push({ key, label, status, detail });
+
+  // Required settings are complete (the same validation launching enforces).
+  const errors = validateCampaign({ ...c, geography: c.geography, personas: c.personas }, true);
+  if (Object.keys(errors).length) add("config", "Campaign settings", "block", `Missing or invalid: ${Object.values(errors).join(" ")}`);
+  else add("config", "Campaign settings", "ok", "Name, ICP, targeting, qualification criteria and limits are filled in.");
+
+  if (s.killSwitch.active) add("kill", "Global kill switch", "block", "The kill switch is on, so nothing can start. Turn it off in Settings first.");
+
+  // Channels
+  const on = c.channels.filter((k) => s.channels.some((x) => x.key === k && x.enabled));
+  const off = c.channels.filter((k) => !on.includes(k));
+  if (!on.length) add("channels", "Channels", "block", `None of this campaign's channels (${c.channels.join(", ") || "none selected"}) is enabled, so nothing can be sent.`);
+  else if (off.length) add("channels", "Channels", "warn", `${on.join(", ")} enabled. ${off.join(", ")} is paused platform-wide and will be skipped.`);
+  else add("channels", "Channels", "ok", `${on.join(", ")} enabled.`);
+
+  // Knowledge
+  if (!c.sources.length) add("knowledge", "Knowledge base", "warn", "No knowledge sources. Agents will have nothing to retrieve from and drafts will be generic.");
+  else add("knowledge", "Knowledge base", "ok", `${c.sources.length} source${c.sources.length === 1 ? "" : "s"} for this campaign's agents.`);
+
+  // Agents
+  const stopped = CORE_AGENTS.filter((a) => {
+    const agent = s.agents.find((x) => x.id === a);
+    return !agent || !agent.enabled || (c.agentsEnabled && c.agentsEnabled[a] === false);
+  });
+  if (stopped.length) add("agents", "Agents", "warn", `Paused: ${stopped.join(", ")}. The pipeline will stall at those steps.`);
+  else add("agents", "Agents", "ok", "All core agents are on.");
+
+  // Approval policy
+  const level = (c.approvals && c.approvals.level) || "manual";
+  if (level === "autonomous") add("approvals", "Approvals", "warn", "Autonomous: first outreach and meetings are sent without waiting for a human. Escalated objections still need one.");
+  else if (level === "assisted") add("approvals", "Approvals", "ok", `Assisted: drafts wait for you until you have approved ${c.approvals.autoAfterApproved ?? 3}, then fit ${c.approvals.autoMinScore ?? 85}+ goes out on its own.`);
+  else add("approvals", "Approvals", "ok", "Manual: every toggled action waits in the Approvals queue.");
+
+  // Overlap with campaigns that are running: the same people may be targeted twice.
+  const overlaps = s.campaigns.filter(
+    (o) => o.id !== c.id && (o.status === "live" || o.status === "paused") &&
+      o.personas.some((p) => c.personas.includes(p)) && o.geography.some((g) => c.geography.includes(g))
+  );
+  if (overlaps.length) {
+    add("overlap", "Overlap with other campaigns", "warn", `Same roles and region as ${overlaps.map((o) => o.name).join(", ")}. The 14-day conflict rule stops one person being contacted twice, but prospects may be split between them.`);
+  } else add("overlap", "Overlap with other campaigns", "ok", "No other running campaign targets the same roles in the same region.");
+
+  // Volume this launch could produce
+  const touches = (c.cadence && c.cadence.maxTouches) || 3;
+  add("volume", "Expected volume", "ok", `Up to ${c.dailyLimit || "an unlimited number of"} touches per simulated day, ${touches} touches per prospect, ${(c.cadence && c.cadence.waitHours) || 72}h apart.`);
+
+  const sp = c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === c.systemPrompt.active);
+  add("prompts", "Prompts", "ok", `Campaign prompt v${sp ? sp.version : 1}; agents pinned to ${Object.entries(c.promptPins || {}).slice(0, 5).map(([a, v]) => `${a} ${v}`).join(", ")}.`);
+
+  return { id: c.id, name: c.name, status: c.status, ready: !checks.some((k) => k.status === "block"), checks };
+}
+
 export function getProspects() {
   const s = getState();
   return s.prospects.map((p) => prospectRow(s, p));

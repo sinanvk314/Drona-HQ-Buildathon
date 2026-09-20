@@ -74,3 +74,29 @@ test("campaigns can be compared side by side, including a copy against its origi
   assert.equal(data.getCampaign(copyId).copiedFrom.name, original.name);
   assert.ok(data.getComparison().length >= 3, "with no ids, every non-archived campaign is compared");
 });
+
+test("the launch review says what a manager needs to know before activating, and blocks what cannot launch", async () => {
+  const { id } = data.createCampaign({ name: "Review me" }, { launch: false }); // a Draft with only a name
+  const draft = data.getLaunchReview(id);
+  assert.equal(draft.ready, false);
+  assert.equal(draft.checks.find((k) => k.key === "config").status, "block", "an incomplete draft cannot launch");
+  assert.equal(draft.checks.find((k) => k.key === "knowledge").status, "warn", "no knowledge sources is worth a warning");
+
+  // A complete campaign that targets the same roles and region as a running one gets an overlap warning.
+  const values = { ...data.getCampaignConfig("c_us_saas"), name: "Overlapping SaaS CTO campaign" };
+  const created = data.createCampaign(values, { launch: false });
+  const review = data.getLaunchReview(created.id);
+  assert.equal(review.checks.find((k) => k.key === "config").status, "ok");
+  assert.equal(review.checks.find((k) => k.key === "overlap").status, "warn");
+  assert.match(review.checks.find((k) => k.key === "overlap").detail, /US SaaS CTO/);
+  assert.equal(review.ready, true, "warnings do not stop a launch");
+
+  // A paused channel is called out, and no enabled channel at all blocks.
+  const state = getState();
+  state.channels.find((c) => c.key === "linkedin").enabled = false;
+  assert.equal(data.getLaunchReview(created.id).checks.find((k) => k.key === "channels").status, "warn");
+  state.channels.find((c) => c.key === "email").enabled = false;
+  assert.equal(data.getLaunchReview(created.id).checks.find((k) => k.key === "channels").status, "block");
+  assert.equal(data.getLaunchReview(created.id).ready, false);
+  state.channels.forEach((c) => (c.enabled = true));
+});

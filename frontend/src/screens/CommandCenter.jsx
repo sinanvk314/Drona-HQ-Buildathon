@@ -94,7 +94,7 @@ export default function CommandCenter({ routeName }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 18 }}>
             {data.campaigns.map((c) => (
-              <CampaignCard key={c.id} card={c} onAction={act} onOpen={(id) => navigate("campaignDetail", { id })} />
+              <CampaignCard key={c.id} card={c} onAction={(id, action) => (action === "launch" ? navigate("campaignDetail", { id, review: true }) : act(id, action))} onOpen={(id) => navigate("campaignDetail", { id })} />
             ))}
           </div>
         </div>
