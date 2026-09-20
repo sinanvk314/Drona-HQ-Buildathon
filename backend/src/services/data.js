@@ -178,6 +178,10 @@ export function getCampaign(id) {
     timeline: draft ? [] : s.events.filter((e) => e.campaignId === id).sort((a, b) => b.ts - a.ts).slice(0, 4).map((e) => ({ id: e.id, type: e.type, text: e.text, ts: e.ts })),
     outreach: o,
     approvals: { count: pending.length, items: pending.slice(0, 2).map(approvalQueueItem) },
+    agents: s.agents.map((a) => ({
+      id: a.id, title: a.title, globallyEnabled: a.enabled,
+      enabled: !(c.agentsEnabled && c.agentsEnabled[a.id] === false),
+    })),
     prompts: promptsView(s, c),
     approvalPolicy: { ...c.approvals },
     cadence: { ...(c.cadence || { maxTouches: 3, waitHours: 72 }) },
@@ -611,6 +615,20 @@ export function savePromptVersion(agentId, text) {
     a.versions.forEach((v) => { v.status = "archived"; });
     a.versions.unshift({ version: next, changedBy: currentUser(), date: shortDate(Date.now()), status: "active", text: text.trim(), activatedBy: currentUser(), activatedTs: Date.now() });
     return { agentId, version: next };
+  });
+}
+
+/** Agent pause (PS "levels of control"): stop or start ONE agent in ONE campaign; the rest of the campaign continues. */
+export function setCampaignAgentEnabled(campaignId, agentId, enabled) {
+  return withState((s) => {
+    const c = campaignOf(s, campaignId);
+    const agent = s.agents.find((a) => a.id === agentId);
+    if (!agent) throw new Error("Agent not found.");
+    if (c.status === "archived") throw new Error("An archived campaign cannot be edited.");
+    c.agentsEnabled = { ...(c.agentsEnabled || {}), [agentId]: !!enabled };
+    c.modifiedTs = Date.now();
+    addEvent(s, { campaignId, type: enabled ? "resume" : "paused", text: `${currentUser()} ${enabled ? "turned on" : "paused"} **${agent.title}** in **${c.name}**`, featured: false });
+    return { agentId, enabled: !!enabled };
   });
 }
 

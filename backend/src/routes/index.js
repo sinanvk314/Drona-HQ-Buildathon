@@ -31,6 +31,7 @@ router.post("/campaigns/:id/prompts/pins", asyncRoute(async (req, res) => res.js
 router.post("/campaigns/:id/prompts/system", asyncRoute(async (req, res) => res.json(data.saveCampaignSystemPrompt(req.params.id, (req.body || {}).text))));
 router.post("/campaigns/:id/prompts/system/:version/activate", asyncRoute(async (req, res) => res.json(data.activateCampaignSystemPrompt(req.params.id, req.params.version))));
 router.post("/campaigns/:id/prompts/overrides", asyncRoute(async (req, res) => res.json(data.setCampaignOverride(req.params.id, (req.body || {}).agentId, (req.body || {}).text))));
+router.post("/campaigns/:id/agents/:agentId", asyncRoute(async (req, res) => res.json(data.setCampaignAgentEnabled(req.params.id, req.params.agentId, !!(req.body || {}).enabled))));
 router.post("/campaigns/:id/duplicate", asyncRoute(async (req, res) => res.json(data.duplicateCampaign(req.params.id))));
 router.post("/campaigns/:id/sources", asyncRoute(async (req, res) => res.json(data.addCampaignSource(req.params.id, req.body || {}))));
 router.delete("/campaigns/:id/sources/:sourceId", asyncRoute(async (req, res) => res.json(data.removeCampaignSource(req.params.id, req.params.sourceId))));

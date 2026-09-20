@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import Shell from "../components/shell/Shell.jsx";
 import { useNav } from "../components/shell/NavContext.jsx";
 import ProspectTable from "../components/features/ProspectTable.jsx";
@@ -7,7 +7,9 @@ import RichText from "../components/ui/RichText.jsx";
 import { StatusBadge, Tag } from "../components/ui/Badge.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { ACTION_LABEL, useCampaignActions } from "../hooks/useCampaignActions.js";
-import { duplicateCampaign, getCampaign } from "../services/api.js";
+import { archiveCampaign, completeCampaign, duplicateCampaign, getCampaign } from "../services/api.js";
+import { ConfirmDialog } from "../components/ui/Modal.jsx";
+import CampaignAgentsPanel from "../components/campaign/CampaignAgentsPanel.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
@@ -20,6 +22,7 @@ export default function CampaignDetail({ params }) {
   const { navigate } = useNav();
   const act = useCampaignActions();
   const toast = useToast();
+  const [confirm, setConfirm] = useState(null); // "complete" | "archive"
   const { data: c, error } = useApi(() => getCampaign(params.id), [params.id]);
   const crumbs = [{ label: "Campaigns", onClick: () => navigate("campaigns") }];
 
@@ -33,6 +36,24 @@ export default function CampaignDetail({ params }) {
 
   const draft = c.rawStatus === "draft";
   const editable = c.rawStatus !== "completed" && c.rawStatus !== "archived";
+  const canComplete = c.rawStatus === "live" || c.rawStatus === "paused";
+  const canArchive = ["draft", "paused", "completed"].includes(c.rawStatus);
+  const finish = async () => {
+    const which = confirm;
+    setConfirm(null);
+    try {
+      if (which === "complete") {
+        await completeCampaign(c.id);
+        toast("Campaign marked as completed. Its history and analytics stay available.");
+      } else {
+        await archiveCampaign(c.id);
+        toast("Campaign archived. Its history stays available.");
+        navigate("campaigns");
+      }
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
   const duplicate = async () => {
     try {
       const copy = await duplicateCampaign(c.id);
@@ -54,6 +75,8 @@ export default function CampaignDetail({ params }) {
           </div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>Last modified {timeAgo(c.modifiedTs)}</div>
           <button type="button" className="btn btn-secondary" onClick={duplicate}>Duplicate</button>
+          {canComplete && <button type="button" className="btn btn-secondary" onClick={() => setConfirm("complete")}>Complete</button>}
+          {canArchive && <button type="button" className="btn btn-secondary" onClick={() => setConfirm("archive")}>Archive</button>}
           {editable && (
             <button type="button" className="btn btn-secondary" onClick={() => navigate("editCampaign", { id: c.id })}>Edit</button>
           )}
@@ -177,6 +200,8 @@ export default function CampaignDetail({ params }) {
           </div>
         </div>
 
+        <CampaignAgentsPanel campaignId={c.id} agents={c.agents} editable={editable} />
+
         <CampaignPromptsPanel campaignId={c.id} prompts={c.prompts} editable={editable} />
 
         <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} cadence={c.cadence} />
@@ -190,6 +215,20 @@ export default function CampaignDetail({ params }) {
           />
         </div>
       </div>
+      {confirm && (
+        <ConfirmDialog
+          title={confirm === "complete" ? "Mark this campaign as completed?" : "Archive this campaign?"}
+          message={
+            confirm === "complete"
+              ? "All autonomous outreach in this campaign stops for good. Its prospects, conversations, decisions and analytics stay available. This cannot be undone."
+              : "The campaign leaves your active list. Its prospects, conversations, decisions and analytics stay available. This cannot be undone."
+          }
+          confirmLabel={confirm === "complete" ? "Mark as completed" : "Archive"}
+          danger
+          onConfirm={finish}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </Shell>
   );
 }

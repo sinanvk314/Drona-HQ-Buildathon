@@ -116,6 +116,8 @@ export const savePromptVersion = (agentId, text) => post(`/agents/${agentId}/ver
 
 // ---------------------------------------------------------------- global controls
 export const setKillSwitch = (active) => post("/settings/kill-switch", { active });
+// Agent pause for one campaign only (the line below pauses an agent for the whole platform).
+export const setCampaignAgentEnabled = (id, agentId, enabled) => post(`/campaigns/${id}/agents/${agentId}`, { enabled });
 export const setAgentEnabled = (id, enabled) => post(`/agents/${id}/enabled`, { enabled });
 export const setChannelEnabled = (key, enabled) => post(`/settings/channels/${key}`, { enabled });
 export const addSuppression = ({ contact, reason }) => post("/settings/suppression", { contact, reason });

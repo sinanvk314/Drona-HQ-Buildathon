@@ -138,3 +138,19 @@ test("each qualified prospect gets a plan that only uses enabled channels, befor
     assert.notEqual(p.plan.sequence[0], "sms", "SMS is never the opening touch");
   }
 });
+
+test("pausing one agent in one campaign stops only that agent there, and the other campaigns carry on", async () => {
+  const founders = silentProspect("c_ai_founders", { sequence: ["email", "sms", "email"] });
+  const bfsi = silentProspect("c_india_bfsi", { sequence: ["email", "email", "email"] });
+
+  data.setCampaignAgentEnabled("c_ai_founders", "followup", false);
+  await tick();
+  assert.equal(founders.touches.length, 1, "follow-ups are off in the founders campaign");
+  assert.ok(getState().approvals.some((a) => a.prospectId === bfsi.id && a.touchKind === "cadence"), "the BFSI campaign still follows up");
+  assert.equal(data.getCampaign("c_ai_founders").agents.find((a) => a.id === "followup").enabled, false);
+  assert.equal(data.getCampaign("c_india_bfsi").agents.find((a) => a.id === "followup").enabled, true);
+
+  data.setCampaignAgentEnabled("c_ai_founders", "followup", true);
+  await tick();
+  assert.equal(founders.touches.length, 2, "and it resumes when turned back on");
+});

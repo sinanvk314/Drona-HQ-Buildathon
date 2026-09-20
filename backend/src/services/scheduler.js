@@ -18,7 +18,10 @@ import { hoursToMs } from "./simTime.js";
 import { shortDate } from "../utils/format.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
-const agentEnabled = (s, id) => !s.killSwitch.active && !!agentById(s, id)?.enabled;
+// An agent runs in a campaign only when it is enabled for the whole platform AND for that campaign, and the kill
+// switch is off. (Agent pause: one agent stops in one campaign while the rest of the campaign continues.)
+const agentEnabled = (s, id, campaign) =>
+  !s.killSwitch.active && !!agentById(s, id)?.enabled && !(campaign && campaign.agentsEnabled && campaign.agentsEnabled[id] === false);
 const channelEnabled = (s, key) => s.channels.some((c) => c.key === key && c.enabled);
 
 function pushDecision(s, decision) {
@@ -51,7 +54,7 @@ function pushApproval(s, approval) {
 }
 
 async function runLeadResearch(s, campaign) {
-  if (!agentEnabled(s, "lead")) return;
+  if (!agentEnabled(s, "lead", campaign)) return;
   // Background volume (mirrors the scale implied by the seeded funnel totals).
   const bump = 1 + Math.floor(Math.random() * 4);
   campaign.funnel.discovered += bump;
@@ -89,7 +92,7 @@ function autoApproval(s, campaign, prospect, type) {
 }
 
 async function runIcpFitment(s, campaign) {
-  if (!agentEnabled(s, "icp")) return;
+  if (!agentEnabled(s, "icp", campaign)) return;
   const icpAgent = agentById(s, "icp");
   const batch = s.prospects.filter((p) => p.campaignId === campaign.id && p.stage === "researched" && p.fit == null).slice(0, config.schedulerBatchSize);
 
@@ -168,7 +171,7 @@ function holdOutreach(s, campaign, prospect, reason) {
 // Outreach Strategy Agent: plans which channels, in what order and how long to wait. Runs once per qualified prospect,
 // before any message is drafted, and only over the channels that are enabled right now.
 async function runStrategy(s, campaign) {
-  if (!agentEnabled(s, "strategy")) return;
+  if (!agentEnabled(s, "strategy", campaign)) return;
   const allowedChannels = campaign.channels.filter((k) => channelEnabled(s, k));
   if (!allowedChannels.length) return;
   const strategyAgent = agentById(s, "strategy");
@@ -201,12 +204,12 @@ async function runStrategy(s, campaign) {
 }
 
 async function runPersonalisation(s, campaign) {
-  if (!agentEnabled(s, "personalisation")) return;
+  if (!agentEnabled(s, "personalisation", campaign)) return;
   const activeChannels = campaign.channels.filter((k) => channelEnabled(s, k));
   if (!activeChannels.length) return;
   const personalisationAgent = agentById(s, "personalisation");
   const batch = s.prospects
-    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval" && p.nextStep !== "See Decision Journal" && (p.plan || !agentEnabled(s, "strategy")))
+    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval" && p.nextStep !== "See Decision Journal" && (p.plan || !agentEnabled(s, "strategy", campaign)))
     .slice(0, config.schedulerBatchSize);
 
   for (const prospect of batch) {
@@ -368,7 +371,7 @@ function applyRoutedReply(s, campaign, prospect, routed) {
 }
 
 async function runConversation(s, campaign) {
-  if (!agentEnabled(s, "conversation")) return;
+  if (!agentEnabled(s, "conversation", campaign)) return;
   const conversationAgent = agentById(s, "conversation");
   const contacted = s.prospects.filter(
     (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out")
@@ -493,7 +496,7 @@ async function runConversation(s, campaign) {
 // Follow-up Agent: cadence for contacted prospects who have gone quiet. WHEN is policy (the plan, the wait, the touch
 // limit, opt-outs, working hours, daily limit); HOW (the message and its angle) is the agent's call.
 async function runFollowUp(s, campaign) {
-  if (!agentEnabled(s, "followup")) return;
+  if (!agentEnabled(s, "followup", campaign)) return;
   const followupAgent = agentById(s, "followup");
   const now = Date.now();
   const silent = s.prospects.filter(
