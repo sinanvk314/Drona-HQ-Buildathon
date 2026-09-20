@@ -9,7 +9,10 @@
 //   VITE_API_BASE_URL=http://localhost:8080/api
 // (or your deployed backend URL). Falls back to http://localhost:8080/api if unset.
 
-const BASE_URL = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_BASE_URL) || "http://localhost:8080/api";
+// Order: VITE_API_BASE_URL if set; else, in a production build, the same origin (the backend serves the UI);
+// else the local backend for `npm run dev`.
+const env = (typeof import.meta !== "undefined" && import.meta.env) || {};
+const BASE_URL = env.VITE_API_BASE_URL || (env.PROD ? "/api" : "http://localhost:8080/api");
 
 // ---------------------------------------------------------------- transport + pub/sub
 // The mock's `subscribe()` fired synchronously whenever any write mutated the shared

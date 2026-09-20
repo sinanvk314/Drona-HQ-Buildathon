@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.env
+**/*.log
+backend/data/state.json
+backend/data/usage.json
+backend/data/.embedding-cache
+matching-service
+docs
+screenshots
+.git
+*.zip
+*.pdf

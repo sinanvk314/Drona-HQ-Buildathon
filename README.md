@@ -176,12 +176,14 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `REPLY_ROUTING` | `on` | Route opt-out / hostile / out-of-office replies by embeddings. `off` disables. |
 | `SCHEDULER_INTERVAL_MS` | `12000` | How often the autonomous loop ticks |
 | `SCHEDULER_BATCH_SIZE` | `3` | Prospects advanced per campaign per tick |
-| `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives |
+| `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives (point at a persistent disk when deploying) |
+| `USAGE_FILE` | `./data/usage.json` | Where the LLM call counters live |
+| `EMBEDDING_CACHE_DIR` | `./data/.embedding-cache` | Where the embedding model is cached |
 | `DATABASE_URL` | empty | If set, use Postgres instead of the JSON file (see section 9) |
 | `ANTHROPIC_API_KEY` | empty | Only if `AGENT_ENGINE` includes `llm` |
 | `DRONAHQ_*` | empty | Only if `AGENT_ENGINE` includes `dronahq` (see `backend/.env.example`) |
 
-Frontend: `VITE_API_BASE_URL` (set at **build** time) is the backend's `/api` URL.
+Frontend: `VITE_API_BASE_URL` (set at **build** time) is optional. Unset, a production build calls the same origin's `/api`, and `npm run dev` calls `http://localhost:8080/api`.
 
 ## 7. Avoiding Gemini quota problems
 
@@ -195,42 +197,53 @@ Frontend: `VITE_API_BASE_URL` (set at **build** time) is the backend's `/api` UR
 
 ## 8. Deploy it (live URL)
 
-The submission needs a URL judges can open, not a local build. There are two pieces: the **backend** (a Node
-server that must stay running, because it runs the scheduler) and the **frontend** (static files).
+The submission needs a URL judges can open. The backend can serve the built UI itself, so this is **one service
+with one URL**: no CORS setup, no separate frontend site, no build-time API URL. It must be a host that keeps a Node
+process running, because the autonomous scheduler runs inside it.
 
-### Backend (any host that runs a long-lived Node service: Render, Railway, Fly.io, a VPS)
+### Option A: Docker (works on Render, Railway, Fly.io, a VPS)
 
-Example on Render (other hosts are similar):
+The root `Dockerfile` builds the UI, installs the backend and starts everything on port 8080.
+
 1. Push the repo to GitHub.
-2. New **Web Service** → connect the repo.
-3. Root directory: `backend`. Build command: `npm install`. Start command: `npm start`.
-4. Environment variables (Environment tab):
+2. Create a new **Web Service** from the repo on your host, using the Dockerfile at the repo root.
+3. Attach a **persistent volume/disk mounted at `/data`** (datastore, usage counters and the embedding-model cache
+   live there; without it, campaigns reset on every restart).
+4. Set the environment variables:
    ```
    AGENT_ENGINE=gemini
    GEMINI_API_KEY=your key
-   ALLOWED_ORIGINS=https://your-frontend-url
    LLM_DAILY_CALL_CAP=300
    ```
-   (`PORT` is provided by the host.)
-5. Deploy, then open `https://your-backend/health` and check `"ok":true`.
+   (`PORT` is usually provided by the host; the container listens on 8080 by default.)
+5. Deploy, then open `https://your-service/health` (expect `"ok":true`) and `https://your-service/` (the app).
 
-Things to get right:
-- **It must not sleep.** Some free tiers stop an idle service, which also stops the scheduler. Use a plan that stays awake, or open the app right before the demo.
-- **Keep the data across restarts.** The default datastore is the file `backend/data/state.json`. Hosts with an ephemeral disk lose it on every redeploy or restart, and the app reseeds. Either attach a persistent disk/volume (mount it and set `DATA_FILE` to a path on it), or use Postgres (section 9).
-- **Memory.** The embedding model needs a few hundred MB of RAM. If it cannot load, the app still runs: retrieval falls back to keyword search and reply routing hands everything to the agent.
-- **No login.** The API has no authentication, so anyone with the URL can operate the campaigns. Share the URL only with judges and teammates.
+### Option B: no Docker (any host with a Node build step)
 
-### Frontend (Netlify, Vercel, Cloudflare Pages, Render Static Site)
+- Build command: `npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install`
+- Start command: `npm --prefix backend start`
+- Same environment variables. If the host has a persistent disk, mount it and set `DATA_FILE`, `USAGE_FILE` and
+  `EMBEDDING_CACHE_DIR` to paths on it.
 
-1. New site → connect the repo.
-2. Base directory: `frontend`. Build command: `npm run build`. Publish directory: `dist`.
-3. Environment variable, set **before** the build: `VITE_API_BASE_URL=https://your-backend/api`
-4. Deploy, then put this site's URL into the backend's `ALLOWED_ORIGINS` and redeploy the backend (otherwise the browser blocks the calls).
+### Things to get right
+- **It must not sleep.** Some free tiers stop an idle service, which also stops the scheduler. Use a plan that stays
+  awake, or open the app just before the demo.
+- **Keep the data across restarts.** Hosts with an ephemeral disk lose `state.json` on every redeploy and the app
+  reseeds. Use a persistent volume (above), or Postgres (section 9).
+- **Memory.** The embedding model needs a few hundred MB of RAM. If it cannot load, the app still runs: retrieval falls
+  back to keyword search and reply routing hands everything to the agent. The first request that needs it downloads
+  about 130 MB, so warm it up before the demo (start a campaign once).
+- **No login.** The API has no authentication, so anyone with the URL can operate the campaigns. Share the URL only
+  with judges and teammates.
+- **Separate frontend host (optional).** If you prefer one, build the frontend with
+  `VITE_API_BASE_URL=https://your-backend/api` and add its URL to `ALLOWED_ORIGINS` on the backend.
 
 ### Checklist before the demo
 - `/health` shows `agentEngine` as `gemini > rule` and `geminiKeyConfigured: true`.
 - Command Center loads, three campaigns are visible, and pausing one leaves the others running.
 - Keep one campaign in each state (Live, Paused, Draft) to show the lifecycle.
+- Note the Docker path has not been run on a real host by the authors; the Node path (build, then start) was tested
+  locally against the built UI.
 
 ## 9. Data, and working as a team
 
