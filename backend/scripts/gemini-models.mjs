@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 
 const envFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".env");
 dotenv.config({ path: envFile });
-const { config } = await import("../src/config.js");
+const { config, geminiModels } = await import("../src/config.js");
 
 if (!config.gemini.apiKey) {
   console.error(`\nGEMINI_API_KEY is not set. Add it to:\n  ${path.resolve(envFile)}\n`);
@@ -32,11 +32,15 @@ if (!config.gemini.apiKey) {
     }
     const rank = (n) => (/flash-lite/.test(n) ? 1 : /flash/.test(n) ? 0 : 2);
     found.sort((a, b) => rank(a) - rank(b) || b.localeCompare(a));
-    console.log(`Currently configured GEMINI_MODEL: ${config.gemini.model}`);
+    const configured = geminiModels();
+    console.log(`Currently configured GEMINI_MODEL: ${configured.join(", ")}`);
     console.log(`Models your key can use with generateContent (${found.length}), Flash first:\n`);
-    for (const n of found.slice(0, 25)) console.log(`  ${n}${n === config.gemini.model ? "   <- configured" : ""}`);
-    if (found.length && !found.includes(config.gemini.model)) {
-      console.log(`\nYour configured model is NOT in this list. Put one of the names above in backend/.env as:\n  GEMINI_MODEL=<name>`);
+    for (const n of found.slice(0, 25)) console.log(`  ${n}${configured.includes(n) ? "   <- configured" : ""}`);
+    const missing = configured.filter((m) => !found.includes(m));
+    if (found.length && missing.length) {
+      console.log(`\nNot in this list (these would fail): ${missing.join(", ")}\nPut names from the list above in backend/.env, comma-separated, first choice first:\n  GEMINI_MODEL=<name>,<backup name>`);
+    } else if (found.length) {
+      console.log(`\nAll configured models are available to your key.`);
     }
   } catch (e) {
     console.error(`Could not list models: ${e.message}`);

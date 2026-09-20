@@ -18,9 +18,12 @@ export const config = {
   // Google Gemini (free tier available). Structured JSON output is enforced by the API itself.
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || "",
-    // Google retires models often (gemini-2.5-flash returned "no longer available to new users" in
-    // testing). List what your key can use with:  node backend\scripts\gemini-models.mjs
-    model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+    // One model or a comma-separated list tried in order. Free-tier quotas are PER MODEL, so a second model
+    // keeps the demo alive when the first one's quota runs out. Google also retires models often
+    // (gemini-2.5-flash returned "no longer available to new users"). List what your key can use with:
+    //   node backend\scripts\gemini-models.mjs
+    // The lite model answers in ~2s (vs ~8s), so it goes first.
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite,gemini-3.6-flash",
     baseUrl: process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
     timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS) || 30000,
     // Temporary errors (HTTP 429 rate limit, 500/502/503/504 "high demand") are retried with a growing
@@ -69,6 +72,11 @@ export function engineChain() {
 
 export function isLlmMode() {
   return engineChain().includes("llm") && !!config.anthropicApiKey;
+}
+
+/** The Gemini models to try, in order, from GEMINI_MODEL ("a,b" -> ["a", "b"]). */
+export function geminiModels() {
+  return String(config.gemini.model).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 export function isDronahqMode() {

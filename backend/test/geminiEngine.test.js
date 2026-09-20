@@ -35,6 +35,7 @@ before(async () => {
   config.gemini.rpm = 600000; // no throttling delay in tests
   config.gemini.timeoutMs = 400;
   config.gemini.retries = 2;
+  config.gemini.model = "test-model"; // one model unless a test sets a list
   config.gemini.retryDelayMs = 5; // tiny pause so retry tests stay fast
   config.gemini.fallback = "rule";
   config.dronahq.fallback = "rule";
@@ -229,10 +230,73 @@ test("a permanent error (retired model, HTTP 404) is NOT retried", async () => {
   assert.equal(calls, 1);
 });
 
-test("a 429 rate limit is retried too", async () => {
+test("a 429 that carries a Retry-After (a per-minute burst) is waited out and retried on the same model", async () => {
   let calls = 0;
-  handler = (req, res) => (++calls === 1 ? json({ error: "quota" }, 429)(req, res) : json(geminiReply(GOOD_ICP))(req, res));
+  handler = (req, res) => {
+    if (++calls === 1) { res.writeHead(429, { "content-type": "application/json", "retry-after": "1" }); return res.end("{}"); }
+    return json(geminiReply(GOOD_ICP))(req, res);
+  };
   const { s, campaign, prospect, agent } = fixtures();
   const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
   assert.deepEqual([r.engine, calls], ["gemini", 2]);
+});
+
+
+// ---- several models: quotas are per model, so the next one takes over --------------------------------
+
+const seenModels = [];
+const modelOf = (req) => decodeURIComponent(req.url.match(/models\/([^:]+):/)[1]);
+async function withModels(list, fn) {
+  const saved = config.gemini.model; config.gemini.model = list; seenModels.length = 0;
+  try { return await fn(); } finally { config.gemini.model = saved; }
+}
+
+test("a model whose quota is used up (429, no Retry-After) hands over to the next model at once", async () => {
+  handler = (req, res) => { seenModels.push(modelOf(req)); return (modelOf(req) === "m1" ? json({ error: { message: "You exceeded your current quota" } }, 429) : json(geminiReply(GOOD_ICP)))(req, res); };
+  await withModels("m1,m2", async () => {
+    const { s, campaign, prospect, agent } = fixtures();
+    const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
+    assert.deepEqual([r.engine, r.score], ["gemini", 86]);
+    assert.deepEqual(seenModels, ["m1", "m2"]); // m1 tried once (not retried), then m2
+  });
+});
+
+test("a retired model (404) hands over to the next model", async () => {
+  handler = (req, res) => { seenModels.push(modelOf(req)); return (modelOf(req) === "old" ? json({ error: { message: "no longer available" } }, 404) : json(geminiReply(GOOD_ICP)))(req, res); };
+  await withModels("old,new", async () => {
+    const { s, campaign, prospect, agent } = fixtures();
+    const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
+    assert.equal(r.engine, "gemini");
+    assert.deepEqual(seenModels, ["old", "new"]);
+  });
+});
+
+test("a model still overloaded (503) after its retries hands over to the next model", async () => {
+  handler = (req, res) => { seenModels.push(modelOf(req)); return (modelOf(req) === "busy" ? json({ error: "UNAVAILABLE" }, 503) : json(geminiReply(GOOD_ICP)))(req, res); };
+  await withModels("busy,ok", async () => {
+    const { s, campaign, prospect, agent } = fixtures();
+    const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
+    assert.equal(r.engine, "gemini");
+    assert.deepEqual(seenModels, ["busy", "busy", "busy", "ok"]); // 1 try + 2 retries, then the next model
+  });
+});
+
+test("when every model is unavailable the rule engine decides and every model's reason is listed", async () => {
+  handler = json({ error: { message: "You exceeded your current quota" } }, 429);
+  await withModels("m1,m2", async () => {
+    const { s, campaign, prospect, agent } = fixtures();
+    const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
+    assert.equal(r.engine, "rule");
+    assert.match(r.fallbackReason, /\[m1\].*\[m2\]/);
+  });
+});
+
+test("a problem that is not about the model (a blocked request) does NOT try other models", async () => {
+  handler = (req, res) => { seenModels.push(modelOf(req)); return json({ promptFeedback: { blockReason: "SAFETY" } })(req, res); };
+  await withModels("m1,m2", async () => {
+    const { s, campaign, prospect, agent } = fixtures();
+    const r = await engine.scoreICP({ state: s, campaign, prospect, icpAgent: agent("icp") });
+    assert.match(r.fallbackReason, /blocked: SAFETY/);
+    assert.deepEqual(seenModels, ["m1"]);
+  });
 });

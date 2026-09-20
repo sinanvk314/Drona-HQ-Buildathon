@@ -9,7 +9,7 @@
 // Free tier is roughly 15 requests/minute, so calls are throttled client-side (GEMINI_RPM). Any
 // failure (missing key, 429, timeout, blocked or malformed output) throws; agentEngine/index.js
 // then moves to the next engine in the AGENT_ENGINE chain, ending at the rule engine.
-import { config } from "../../config.js";
+import { config, geminiModels } from "../../config.js";
 import {
   campaignBlock,
   dossierFor,
@@ -22,11 +22,14 @@ import {
 } from "./dronahqEngine.js";
 
 export class GeminiError extends Error {
-  // `retryable` marks temporary failures (rate limit, "high demand"); retryAfterMs comes from Google's Retry-After header.
-  constructor(message, { retryable = false, retryAfterMs } = {}) {
+  // retryable: a temporary failure worth retrying on the SAME model ("high demand", or a 429 that carries a
+  // Retry-After hint). retryAfterMs: Google's Retry-After. switchModel: this model is the problem (quota used
+  // up, retired, or overloaded past the retries), so the NEXT model in GEMINI_MODEL is worth trying.
+  constructor(message, { retryable = false, retryAfterMs, switchModel = false } = {}) {
     super(message);
     this.retryable = retryable;
     this.retryAfterMs = retryAfterMs;
+    this.switchModel = switchModel;
   }
 }
 
@@ -120,7 +123,7 @@ async function throttle() {
   if (start > now) await new Promise((resolve) => setTimeout(resolve, start - now));
 }
 
-async function generateOnce({ system, input, schema }) {
+async function generateOnce({ system, input, schema }, model) {
   const g = config.gemini;
   if (!g.apiKey) throw new GeminiError("GEMINI_API_KEY is not set");
   await throttle();
@@ -128,7 +131,7 @@ async function generateOnce({ system, input, schema }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), g.timeoutMs);
   try {
-    const res = await fetch(`${g.baseUrl}/models/${g.model}:generateContent`, {
+    const res = await fetch(`${g.baseUrl}/models/${model}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": g.apiKey },
       body: JSON.stringify({
@@ -140,14 +143,22 @@ async function generateOnce({ system, input, schema }) {
     });
     if (res.status === 429) {
       const seconds = Number(res.headers.get("retry-after"));
-      throw new GeminiError("rate limited (HTTP 429): slow down or wait for the quota to reset", {
-        retryable: true,
-        retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 30000) : undefined,
+      // Google's own explanation says whether it is the per-minute or the daily quota, which matters.
+      const detail = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240);
+      const hint = Number.isFinite(seconds) && seconds > 0;
+      // A 429 with a Retry-After is a per-minute burst: wait and retry this model. Without one it is almost
+      // always the model's quota being used up, which waiting won't fix, so move on to the next model.
+      throw new GeminiError(`[${model}] rate limited (HTTP 429): ${detail || "slow down or wait for the quota to reset"}`, {
+        retryable: hint,
+        retryAfterMs: hint ? Math.min(seconds * 1000, 30000) : undefined,
+        switchModel: true,
       });
     }
     if (!res.ok) {
-      throw new GeminiError(`HTTP ${res.status}: ${(await res.text()).replace(/\s+/g, " ").slice(0, 200)}`, {
+      throw new GeminiError(`[${model}] HTTP ${res.status}: ${(await res.text()).replace(/\s+/g, " ").slice(0, 200)}`, {
         retryable: RETRYABLE_STATUSES.has(res.status),
+        // A retired model (404) or a model still overloaded after the retries: try the next one.
+        switchModel: res.status === 404 || RETRYABLE_STATUSES.has(res.status),
       });
     }
 
@@ -168,16 +179,34 @@ async function generateOnce({ system, input, schema }) {
 
 // Retries temporary failures a few times with a growing pause, so a passing "high demand" blip does not
 // push a decision to the next engine. Permanent failures (bad key, 404 model, blocked, bad JSON) throw at once.
-async function generate(args) {
+async function generateWithRetries(args, model) {
   const g = config.gemini;
   for (let attempt = 0; ; attempt++) {
     try {
-      return await generateOnce(args);
+      return await generateOnce(args, model);
     } catch (e) {
       if (!(e instanceof GeminiError) || !e.retryable || attempt >= g.retries) throw e;
       await sleep(e.retryAfterMs ?? g.retryDelayMs * (attempt + 1));
     }
   }
+}
+
+// GEMINI_MODEL can list several models ("a,b"): free-tier quotas are PER MODEL, so when one is used up,
+// retired or overloaded the next still works. Only failures that are about the model move on; a bad key,
+// a blocked request or unparseable output would fail the same way everywhere, so they throw at once.
+async function generate(args) {
+  const models = geminiModels();
+  const failures = [];
+  for (let i = 0; i < models.length; i++) {
+    try {
+      return await generateWithRetries(args, models[i]);
+    } catch (e) {
+      if (!(e instanceof GeminiError) || !e.switchModel) throw e;
+      failures.push(e.message);
+      if (i === models.length - 1) throw new GeminiError(failures.join(" | "));
+    }
+  }
+  throw new GeminiError("no Gemini model configured (set GEMINI_MODEL)");
 }
 
 // ---- the three agents -------------------------------------------------------------------------
