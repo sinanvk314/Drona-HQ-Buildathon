@@ -179,7 +179,8 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives (point at a persistent disk when deploying) |
 | `USAGE_FILE` | `./data/usage.json` | Where the LLM call counters live |
 | `EMBEDDING_CACHE_DIR` | `./data/.embedding-cache` | Where the embedding model is cached |
-| `DATABASE_URL` | empty | If set, use Postgres instead of the JSON file (see section 9) |
+| `DATABASE_URL` | empty | Postgres (Neon) connection string. If set, the state is stored there instead of the JSON file (section 9) |
+| `EMBEDDINGS` | `on` | `off` never loads the embedding model (saves ~300MB RAM on small hosts) |
 | `ANTHROPIC_API_KEY` | empty | Only if `AGENT_ENGINE` includes `llm` |
 | `DRONAHQ_*` | empty | Only if `AGENT_ENGINE` includes `dronahq` (see `backend/.env.example`) |
 
@@ -225,11 +226,33 @@ The root `Dockerfile` builds the UI, installs the backend and starts everything 
 - Same environment variables. If the host has a persistent disk, mount it and set `DATA_FILE`, `USAGE_FILE` and
   `EMBEDDING_CACHE_DIR` to paths on it.
 
+### Zero-cost setup (Render free + Neon free + UptimeRobot free)
+
+Free hosts have no persistent disk and sleep when idle, so this path uses a free Postgres for storage and a free pinger.
+
+1. **Neon** (neon.tech): create a **new project** just for this app (not a database used by anything else). Copy its
+   connection string (it starts with `postgresql://`). The app creates one table, `sdr_app_state`, by itself.
+2. **Render** (render.com): New → Web Service → your repo → language **Docker** → instance type **Free**. Skip the disk.
+   Environment variables:
+   ```
+   DATABASE_URL=<the Neon connection string>
+   AGENT_ENGINE=gemini
+   GEMINI_API_KEY=<your key>
+   LLM_DAILY_CALL_CAP=300
+   EMBEDDINGS=off        # free instances have ~512MB RAM; remove this line if the model loads fine
+   ```
+3. Open `https://<name>.onrender.com/health`. The log should say `Datastore: Postgres (Neon)`.
+4. **UptimeRobot** (uptimerobot.com): add an HTTP(s) monitor for `https://<name>.onrender.com/health`, every 5 minutes.
+   This keeps the free service awake so the scheduler keeps running.
+
+With `EMBEDDINGS=off`, retrieval uses keyword search and every reply goes to the Conversation Agent (reply routing is
+the part that needs the model). If the free instance has enough memory, leave `EMBEDDINGS` unset.
+
 ### Things to get right
 - **It must not sleep.** Some free tiers stop an idle service, which also stops the scheduler. Use a plan that stays
   awake, or open the app just before the demo.
 - **Keep the data across restarts.** Hosts with an ephemeral disk lose `state.json` on every redeploy and the app
-  reseeds. Use a persistent volume (above), or Postgres (section 9).
+  reseeds. Use a persistent volume (above), or Neon Postgres (the zero-cost setup above).
 - **Memory.** The embedding model needs a few hundred MB of RAM. If it cannot load, the app still runs: retrieval falls
   back to keyword search and reply routing hands everything to the agent. The first request that needs it downloads
   about 130 MB, so warm it up before the demo (start a campaign once).
@@ -254,17 +277,22 @@ never appear on another, and there is nothing to merge. `data/usage.json` (LLM c
 
 To reset to the seed data, delete `backend/data/state.json` and restart. **This deletes every campaign you created.**
 
-**Postgres is optional.** The JSON file is the tested default and is fine for one server. Postgres (`DATABASE_URL`,
-for example Neon) only matters when the host has an ephemeral disk and you want data to survive a redeploy. Known gap:
-the Postgres adapter does not yet store the new approval-level fields or custom knowledge-source text, so with
-Postgres those reset on restart. Do not point two people at the same `DATABASE_URL`: each backend keeps the whole
-state in memory and rewrites it, so the last writer silently overwrites the other.
+**Postgres (Neon) is optional.** The JSON file is the default and is fine for one server with a persistent disk. Set
+`DATABASE_URL` when the host has no persistent disk (most free tiers). The whole state is then stored as one JSON row in a
+table called `sdr_app_state`, created automatically; nothing else in that database is touched, so use a database that is
+only for this app. Do not point two running copies at the same `DATABASE_URL`: each keeps the state in memory and
+overwrites the row, so the last writer wins.
+
+**Schema changes never delete your campaigns.** If the saved state came from an older seed schema, it is copied to a backup
+(a `state.backup-v<N>-<time>.json` file next to the JSON file, or a `backup-...` row in `sdr_app_state`) before the app
+reseeds.
 
 ## 10. Tests and helper scripts
 
 ```
 cd backend
 npm test                       # unit tests (the first run downloads the embedding model)
+                               # note: the Postgres store is tested against an in-memory fake, not a live Neon database
 node scripts/gemini-models.mjs # which Gemini models your key can use
 node scripts/try-icp.mjs       # ICP scoring on 4 sample prospects (add "gemini" to use the real model)
 node scripts/try-agents.mjs    # personalisation + conversation samples
@@ -296,4 +324,3 @@ rule engine instead.
 - No authentication or user accounts; the "JD" user is hard-coded.
 - Prompt compare and one-click rollback are stubs (activating an older version works).
 - `dailyLimit` and `workingHours` are stored and shown but not enforced by the scheduler.
-- Postgres mode is incomplete for the newest fields (section 9).

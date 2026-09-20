@@ -8,6 +8,7 @@
 // and fall back — they never crash the scheduler.
 import path from "path";
 import { fileURLToPath } from "url";
+import { config } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = process.env.EMBEDDING_CACHE_DIR || path.join(__dirname, "..", "..", "data", ".embedding-cache");
@@ -21,6 +22,7 @@ async function loadModel() {
 }
 
 function getModel() {
+  if (!config.embeddingsEnabled) return Promise.reject(new Error("embeddings are switched off (EMBEDDINGS=off)"));
   if (failed) return Promise.reject(failed);
   if (!modelPromise) {
     modelPromise = loadModel().catch((e) => {
@@ -63,5 +65,6 @@ export function centroid(vectors) {
 
 /** True once the model has loaded successfully (for /health). */
 export function embeddingsStatus() {
+  if (!config.embeddingsEnabled) return "off";
   return failed ? "unavailable" : modelPromise ? "loaded-or-loading" : "not-started";
 }

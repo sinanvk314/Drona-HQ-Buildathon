@@ -21,6 +21,11 @@ export function getPool() {
   return pool;
 }
 
+/** Test hook: replace the pool with a fake so the storage logic can run without a database. */
+export function setPoolForTests(fake) {
+  pool = fake;
+}
+
 // Runs `fn(client)` inside a single BEGIN/COMMIT transaction, rolling back on any error.
 export async function withTransaction(fn) {
   const client = await getPool().connect();

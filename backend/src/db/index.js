@@ -1,8 +1,9 @@
 // Persistence layer. Two backing stores behind one identical API (getState/withState/
 // resetState/persistState), selected by whether DATABASE_URL is set:
 //
-//   - Postgres (Neon), when config.databaseUrl is set — src/db/postgresAdapter.js maps the
-//     in-memory `state` object to/from the real tables created for this project.
+//   - Postgres (Neon), when config.databaseUrl is set — src/db/postgresAdapter.js stores the whole
+//     in-memory `state` object as one JSON document in a table private to this app. For hosts with no
+//     persistent disk.
 //   - A local JSON file (data/state.json) otherwise — the original zero-setup mode, a direct
 //     port of the frontend's own sessionStorage mock (src/services/store.js).
 //
@@ -28,6 +29,10 @@ function loadFromFile() {
     if (fs.existsSync(DATA_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
       if (parsed && parsed.version === SCHEMA_VERSION) return parsed;
+      // Written by an older seed schema: keep it next to the live file instead of overwriting it.
+      const backup = DATA_FILE.replace(/\.json$/, "") + `.backup-v${parsed && parsed.version}-${Date.now()}.json`;
+      fs.copyFileSync(DATA_FILE, backup);
+      console.warn(`[db] ${DATA_FILE} is from schema v${parsed && parsed.version}, expected v${SCHEMA_VERSION}. Copied it to ${backup} and reseeding.`);
     }
   } catch (e) {
     console.warn("[db] Could not read existing state file, starting from seed:", e.message);
@@ -59,7 +64,7 @@ export async function initDb() {
     } else {
       state = buildSeed(Date.now());
       await pgAdapter.saveStateToPg(state);
-      console.log("[db] Postgres tables were empty — seeded with the default demo data.");
+      console.log("[db] No saved state in Postgres — seeded with the default demo data.");
     }
   } else {
     state = loadFromFile() || buildSeed(Date.now());

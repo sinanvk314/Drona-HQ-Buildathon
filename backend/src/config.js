@@ -76,6 +76,9 @@ export const config = {
     minScore: Number(process.env.REPLY_MIN_SCORE) || 0.80,
     minMargin: Number(process.env.REPLY_MIN_MARGIN) || 0.05,
   },
+  // "off" never loads the embedding model (saves ~300MB of RAM on small hosts). Retrieval then uses keyword
+  // search and reply routing sends every reply to the Conversation Agent.
+  embeddingsEnabled: (process.env.EMBEDDINGS || "on").toLowerCase() !== "off",
   // Rough $ per LLM call, only used for the "cost saved" figure on the dashboard.
   estCostPerLlmCall: Number(process.env.EST_COST_PER_LLM_CALL) || 0.0015,
 };

@@ -11,9 +11,8 @@ versioning, cross-campaign conflict detection, and campaign-scoped RAG (PS Secti
 - **Node.js + Express** — REST API, plain ESM JavaScript.
 - **JSON file datastore** (`data/state.json`, gitignored) — the default and the tested path. Created and seeded on
   first start; each clone gets its own copy.
-- **Postgres (optional)** — set `DATABASE_URL` and `src/db/postgresAdapter.js` maps the same in-memory state to real
-  tables instead. Not needed unless the host loses its disk on restart. It does not yet store the approval-level
-  fields or custom knowledge-source text.
+- **Postgres / Neon (optional)** — set `DATABASE_URL` and `src/db/postgresAdapter.js` stores the whole state as one JSON
+  row in a table called `sdr_app_state` (created automatically). For hosts with no persistent disk.
 - **Local embeddings** (`fastembed`, `BAAI/bge-small-en-v1.5`, in-process ONNX, no API key) for knowledge retrieval
   (`src/services/rag.js`) and reply routing (`src/services/replyRouter.js`). TF-IDF is the fallback if the model
   cannot load.
@@ -81,8 +80,7 @@ Decisions are split into **matching** (geometry, free) and **judgment** (an LLM)
   show calls made, decisions with no LLM call, and the estimated cost saved.
 - **Approval levels** per campaign (`approvals.level`): `manual` (toggled actions wait for a human), `assisted`
   (auto-approve at fit >= `autoMinScore` after `autoAfterApproved` human approvals of that action), `autonomous`.
-  Escalated objections always need a human. In Postgres mode the level fields are not persisted yet (the adapter maps
-  only the three toggles).
+  Escalated objections always need a human.
 - **Knowledge sources** are per campaign: either a shipped document (`docId` -> `data/knowledge/<docId>.txt`) or text
   added in the UI (`content`). Add and remove from the campaign page (`POST /campaigns/:id/sources`,
   `DELETE /campaigns/:id/sources/:sourceId`).
@@ -138,7 +136,7 @@ src/
                              or the JSON file depending on DATABASE_URL; every route/service only
                              ever calls this file, never Postgres or the filesystem directly
     pg.js                   Postgres connection pool + transaction helper (node-postgres)
-    postgresAdapter.js      Maps the in-memory state object to/from the 13 real Neon tables
+    postgresAdapter.js      Stores the whole state as one JSON row in Postgres (table sdr_app_state)
     seed.js                 Seed data — ported from the frontend's src/data/seed.js
   services/
     data.js                 Every function src/services/api.js mocks, for real (campaigns, prospects,
