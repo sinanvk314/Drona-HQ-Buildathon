@@ -194,6 +194,8 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `LLM_DAILY_CALL_CAP` | `300` | Max LLM requests per day, retries included. Past it the rule engine decides. `0` disables. |
 | `ICP_SHORTCUT_MARGIN` | `20` | Clear ICP rejections this far below threshold skip the LLM. `0` = always ask the LLM. |
 | `REPLY_ROUTING` | `on` | Route opt-out / hostile / out-of-office replies by embeddings. `off` disables. |
+| `APP_ACCESS_CODE` | empty | If set, the site requires it to sign in. **Set this on a deployed site.** Empty = the login page only asks for a name |
+| `AUTH_SECRET` | empty | Long random string that signs sessions, so sign-ins survive a restart or redeploy |
 | `SCHEDULER_INTERVAL_MS` | `12000` | How often the autonomous loop ticks |
 | `SCHEDULER_BATCH_SIZE` | `3` | Prospects advanced per campaign per tick |
 | `SIM_MS_PER_HOUR` | `3000` | Real milliseconds per simulated hour (follow-up waits, working hours, daily limit). `3600000` = real time |
@@ -279,8 +281,8 @@ the part that needs the model). If the free instance has enough memory, leave `E
 - **Memory.** The embedding model needs a few hundred MB of RAM. If it cannot load, the app still runs: retrieval falls
   back to keyword search and reply routing hands everything to the agent. The first request that needs it downloads
   about 130 MB, so warm it up before the demo (start a campaign once).
-- **No login.** The API has no authentication, so anyone with the URL can operate the campaigns. Share the URL only
-  with judges and teammates.
+- **Protect it.** Set `APP_ACCESS_CODE` (and `AUTH_SECRET`) on the host, and give the code to the judges. Without a code the login
+  page only asks for a name, so anyone with the URL can operate the campaigns.
 - **Separate frontend host (optional).** If you prefer one, build the frontend with
   `VITE_API_BASE_URL=https://your-backend/api` and add its URL to `ALLOWED_ORIGINS` on the backend.
 
@@ -357,6 +359,6 @@ agent's output (the run trace showed it, the HTTP response did not), so agent de
 rule engine instead.
 
 **Other limitations**
-- No authentication or user accounts; the "JD" user is hard-coded.
+- Sign-in is a shared access code plus a display name, not individual accounts or roles. The name is who actions are recorded under.
 - Prompt compare and one-click rollback are stubs (activating an older version works).
 - Working hours, follow-up waits and the daily limit run on a simulated clock (`SIM_MS_PER_HOUR`), because no real sending exists. Set it to `3600000` for real time.

@@ -12,10 +12,12 @@ import { useCampaignActions } from "../hooks/useCampaignActions.js";
 import { getCommandCenter } from "../services/api.js";
 import { fmt, greeting, longDate, timeAgo } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
+import { useSession } from "../hooks/useSession.js";
 
 export default function CommandCenter({ routeName }) {
   const { navigate } = useNav();
   const act = useCampaignActions();
+  const session = useSession();
   const { data } = useApi(() => getCommandCenter(), []);
   const campaignsRef = useRef(null);
   const ready = !!data;
@@ -35,7 +37,7 @@ export default function CommandCenter({ routeName }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{greeting()}, JD</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{greeting()}, {session ? session.name : ""}</div>
             <div style={{ fontSize: 13.5, color: "var(--text-2)", marginTop: 3 }}>
               {longDate(data.now)} · {data.summary.configured} campaigns configured, {data.summary.running} running autonomously · simulated clock {data.simClock}
             </div>

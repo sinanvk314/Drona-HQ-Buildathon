@@ -63,6 +63,13 @@ export const config = {
   modelSmart: process.env.AGENT_MODEL_SMART || "claude-sonnet-4-5",
   schedulerIntervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 12000,
   schedulerBatchSize: Number(process.env.SCHEDULER_BATCH_SIZE) || 3,
+  // Sign-in. With APP_ACCESS_CODE set the API requires it (the name entered at login is who actions are recorded
+  // against); unset, the login page only asks for a name. AUTH_SECRET signs sessions: set it so they survive restarts.
+  auth: {
+    accessCode: process.env.APP_ACCESS_CODE || "",
+    secret: process.env.AUTH_SECRET || "",
+    ttlHours: Number(process.env.AUTH_TTL_HOURS) || 168,
+  },
   // Simulated clock for cadence and working hours. Real sends do not exist yet, and a real 72-hour follow-up wait
   // cannot be shown in a demo, so one simulated hour lasts this many real milliseconds (3000 = a simulated day is
   // 72 seconds). Set it to 3600000 for real time. The daily limit and working hours use the same clock.

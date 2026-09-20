@@ -16,6 +16,7 @@ import { recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
 import { simClockLabel, withinWorkingHours } from "./simTime.js";
 import { config } from "../config.js";
+import { currentUser } from "./auth.js";
 
 function campaignOf(s, id) {
   const c = s.campaigns.find((x) => x.id === id);
@@ -291,21 +292,21 @@ export function getSettings() {
 export function pauseCampaign(id) {
   return withState((s) => {
     if (s.killSwitch.active) throw new Error("The Global Kill Switch is active. Deactivate it first.");
-    return transition(s, id, "paused", (c) => `**${c.name}** paused by JD`);
+    return transition(s, id, "paused", (c) => `**${c.name}** paused by ${currentUser()}`);
   });
 }
 
 export function resumeCampaign(id) {
   return withState((s) => {
     if (s.killSwitch.active) throw new Error("The Global Kill Switch is active. Deactivate it first.");
-    return transition(s, id, "live", (c) => `**${c.name}** resumed by JD`);
+    return transition(s, id, "live", (c) => `**${c.name}** resumed by ${currentUser()}`);
   });
 }
 
 export function launchCampaign(id) {
   return withState((s) => {
     if (s.killSwitch.active) throw new Error("The Global Kill Switch is active. Deactivate it first.");
-    return transition(s, id, "live", (c) => `**${c.name}** launched by JD`);
+    return transition(s, id, "live", (c) => `**${c.name}** launched by ${currentUser()}`);
   });
 }
 
@@ -404,7 +405,7 @@ export function createCampaign(values, { launch = false } = {}) {
     const name = values.name.trim();
     s.campaigns.push({
       id, name, shortName: name, status: launch ? "live" : "draft",
-      owner: (values.owner || "").trim() || "JD", objective: (values.objective || "").trim(), description: (values.description || "").trim(),
+      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), description: (values.description || "").trim(),
       icpSummary: [(values.personas || []).join(" & "), (values.geography || []).join(", ")].filter(Boolean).join(" · "),
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
@@ -413,7 +414,7 @@ export function createCampaign(values, { launch = false } = {}) {
       funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
-    if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by JD` });
+    if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by ${currentUser()}` });
     return { id, status: launch ? "live" : "draft" };
   });
 }
@@ -447,7 +448,7 @@ export function updateCampaign(id, values = {}) {
     c.cadence = normalizeCadence(values.cadence);
     c.icpSummary = [c.personas.join(" & "), c.geography.join(", ")].filter(Boolean).join(" · ");
     c.modifiedTs = Date.now();
-    addEvent(s, { campaignId: id, type: "edit", text: `**${c.name}** settings edited by JD (applies from the next agent run)`, featured: false });
+    addEvent(s, { campaignId: id, type: "edit", text: `**${c.name}** settings edited by ${currentUser()} (applies from the next agent run)`, featured: false });
     return { id: c.id, status: c.status };
   });
 }
@@ -498,7 +499,7 @@ export function decideApproval(id, { action, reason = "" } = {}) {
     const p = s.prospects.find((x) => x.id === a.prospectId);
     const c = s.campaigns.find((x) => x.id === a.campaignId);
     a.status = action === "approve" ? "approved" : "rejected";
-    a.decidedBy = "JD";
+    a.decidedBy = currentUser();
     a.decidedTs = now;
     a.reason = reason.trim();
 
@@ -538,7 +539,7 @@ export function decideApproval(id, { action, reason = "" } = {}) {
     addEvent(s, {
       campaignId: a.campaignId,
       type: action === "approve" ? "approve" : "reject",
-      text: `JD ${action === "approve" ? "approved" : "rejected"} "${a.tag}" for **${a.name}** (${a.company})${action === "approve" ? queued : ""}`,
+      text: `${currentUser()} ${action === "approve" ? "approved" : "rejected"} "${a.tag}" for **${a.name}** (${a.company})${action === "approve" ? queued : ""}`,
     });
     return { id, status: a.status };
   });
@@ -570,7 +571,7 @@ export function activatePromptVersion(agentId, version) {
     const target = a.versions.find((v) => v.version === version);
     if (!target) throw new Error("Version not found.");
     a.versions.forEach((v) => { v.status = v.version === version ? "active" : "archived"; });
-    target.activatedBy = "JD";
+    target.activatedBy = currentUser();
     target.activatedTs = Date.now();
     return { agentId, version };
   });
@@ -585,7 +586,7 @@ export function savePromptVersion(agentId, text) {
     nums.sort((x, y) => y[0] - x[0] || y[1] - x[1]);
     const next = `v${nums[0][0]}.${nums[0][1] + 1}`;
     a.versions.forEach((v) => { v.status = "archived"; });
-    a.versions.unshift({ version: next, changedBy: "JD", date: shortDate(Date.now()), status: "active", text: text.trim(), activatedBy: "JD", activatedTs: Date.now() });
+    a.versions.unshift({ version: next, changedBy: currentUser(), date: shortDate(Date.now()), status: "active", text: text.trim(), activatedBy: currentUser(), activatedTs: Date.now() });
     return { agentId, version: next };
   });
 }
@@ -609,7 +610,7 @@ export function setKillSwitch(active) {
     addEvent(s, {
       campaignId: null,
       type: active ? "kill" : "resume",
-      text: active ? "JD activated the **Global Kill Switch** — all autonomous outreach is stopped" : "JD deactivated the **Global Kill Switch** — campaigns are back to their own status",
+      text: active ? `${currentUser()} activated the **Global Kill Switch** — all autonomous outreach is stopped` : `${currentUser()} deactivated the **Global Kill Switch** — campaigns are back to their own status`,
     });
     return { active: s.killSwitch.active };
   });
@@ -620,7 +621,7 @@ export function setAgentEnabled(id, enabled) {
     const a = s.agents.find((x) => x.id === id);
     if (!a) throw new Error("Agent not found.");
     a.enabled = !!enabled;
-    a.disabledBy = enabled ? null : "JD";
+    a.disabledBy = enabled ? null : currentUser();
     a.disabledTs = enabled ? null : Date.now();
     return { id, enabled: a.enabled };
   });

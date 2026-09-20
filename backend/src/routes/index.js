@@ -4,8 +4,14 @@
 import { Router } from "express";
 import { asyncRoute } from "../middleware/errors.js";
 import * as data from "../services/data.js";
+import { authConfig, login, me } from "../services/auth.js";
 
 export const router = Router();
+
+// ---- sign-in (public; everything else needs a session when an access code is set) ---------------------
+router.get("/auth/config", (req, res) => res.json(authConfig()));
+router.post("/auth/login", asyncRoute(async (req, res) => res.json(login(req.body || {}, req.ip))));
+router.get("/auth/me", (req, res) => res.json({ user: me(req) }));
 
 // ---- shell / command center ------------------------------------------------
 router.get("/shell", asyncRoute(async (req, res) => res.json(data.getShellState())));

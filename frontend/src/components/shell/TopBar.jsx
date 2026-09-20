@@ -4,8 +4,11 @@ import { ConfirmDialog } from "../ui/Modal.jsx";
 import { useToast } from "../ui/Toast.jsx";
 import { useApi } from "../../hooks/useApi.js";
 import { getShellState, setKillSwitch } from "../../services/api.js";
+import { useSession } from "../../hooks/useSession.js";
+import { initials } from "../../services/session.js";
 
 export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = "Search campaigns, prospects…" }) {
+  const session = useSession();
   const toast = useToast();
   const { data } = useApi(() => getShellState(), []);
   const killed = !!(data && data.killSwitch);
@@ -95,7 +98,7 @@ export default function TopBar({ title, crumbs = [], badge, searchPlaceholder = 
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 700,
         }}
       >
-        JD
+        {initials(session && session.name)}
       </div>
 
       {confirming && (

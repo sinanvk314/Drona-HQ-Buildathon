@@ -10,6 +10,7 @@ import { startScheduler } from "./services/scheduler.js";
 import { initDb } from "./db/index.js";
 import { getUsage } from "./services/usage.js";
 import { embeddingsStatus } from "./services/embeddings.js";
+import { authMiddleware } from "./services/auth.js";
 
 const app = express();
 
@@ -32,12 +33,13 @@ app.get("/health", (req, res) =>
     ...(isDronahqMode() ? { dronahqWebhooksConfigured: dronahqStatus() } : {}),
     ...(isGeminiMode() ? { geminiKeyConfigured: !!config.gemini.apiKey, geminiModel: config.gemini.model } : {}),
     schedulerIntervalMs: config.schedulerIntervalMs,
+    signInRequired: !!config.auth.accessCode,
     embeddings: embeddingsStatus(),
     llmUsageToday: (({ llmCalls, dailyCap, capReached, avoidedTotal }) => ({ llmCalls, dailyCap, capReached, decisionsWithoutLlm: avoidedTotal }))(getUsage()),
   })
 );
 
-app.use("/api", router);
+app.use("/api", authMiddleware, router);
 
 // One-service deployment: if the frontend has been built (frontend/dist), serve it from here, with the
 // index page as the fallback for any non-API path. In development the Vite dev server serves the UI instead.

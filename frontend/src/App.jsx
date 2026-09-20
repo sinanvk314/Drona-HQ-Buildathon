@@ -12,6 +12,8 @@ import Approvals from "./screens/Approvals.jsx";
 import AgentsPrompts from "./screens/AgentsPrompts.jsx";
 import Settings from "./screens/Settings.jsx";
 import ComingSoon from "./screens/ComingSoon.jsx";
+import Login from "./screens/Login.jsx";
+import { useSession } from "./hooks/useSession.js";
 
 const SCREENS = {
   command: CommandCenter,
@@ -42,6 +44,7 @@ function loadRoute() {
 }
 
 export default function App() {
+  const session = useSession();
   const [route, setRoute] = useState(loadRoute);
 
   const navigate = useCallback((name, params = {}) => {
@@ -58,6 +61,8 @@ export default function App() {
 
   const value = useMemo(() => ({ route, navigate }), [route, navigate]);
   const Screen = SCREENS[route.name] || CommandCenter;
+
+  if (!session) return <ToastProvider><Login /></ToastProvider>;
 
   return (
     <ToastProvider>

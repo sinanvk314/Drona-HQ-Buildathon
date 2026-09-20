@@ -1,6 +1,9 @@
 import React from "react";
 import Icon from "../ui/Icon.jsx";
 import { useNav } from "./NavContext.jsx";
+import { useSession } from "../../hooks/useSession.js";
+import { initials } from "../../services/session.js";
+import { signOut } from "../../services/api.js";
 
 const ITEMS = [
   { key: "command", label: "Command Center", icon: "grid", route: "command" },
@@ -15,6 +18,7 @@ const ITEMS = [
 
 export default function Sidebar({ active }) {
   const { navigate } = useNav();
+  const session = useSession();
   return (
     <nav
       aria-label="Main navigation"
@@ -63,9 +67,10 @@ export default function Sidebar({ active }) {
               alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text-2)",
             }}
           >
-            JD
+            {initials(session && session.name)}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>JD · Admin</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500, flexGrow: 1 }}>{session ? session.name : ""}</div>
+          <button type="button" className="link" style={{ fontSize: 12 }} onClick={signOut}>Sign out</button>
         </div>
       </div>
     </nav>

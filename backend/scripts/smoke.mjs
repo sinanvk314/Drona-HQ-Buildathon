@@ -4,6 +4,8 @@
 //   node scripts/smoke.mjs                          (http://localhost:8080)
 //   node scripts/smoke.mjs https://your-app.onrender.com [waitSeconds]
 //
+// If the site has an access code (APP_ACCESS_CODE), give it in the SMOKE_ACCESS_CODE environment variable.
+//
 // It pauses one Live campaign for `waitSeconds` (default 30, at least two scheduler ticks) and then
 // resumes it, so it leaves the app as it found it. Do not run it in the middle of a judged demo.
 const base = (process.argv[2] || "http://localhost:8080").replace(/\/+$/, "");
@@ -17,8 +19,9 @@ const bad = (name, detail = "") => {
 };
 const check = (cond, name, detail) => (cond ? ok(name, detail) : bad(name, detail));
 
+let token = null;
 async function call(path, options) {
-  const res = await fetch(`${base}${path}`, { ...options, headers: { "content-type": "application/json" } });
+  const res = await fetch(`${base}${path}`, { ...options, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) } });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
 }
@@ -28,6 +31,11 @@ const prospectsOf = async (id) => (await call(`/api/campaigns/${id}`)).body.metr
 console.log(`Smoke test against ${base}\n`);
 
 const health = await call("/health");
+if (health.body && health.body.signInRequired) {
+  const login = await call("/api/auth/login", { method: "POST", body: JSON.stringify({ name: "smoke test", code: process.env.SMOKE_ACCESS_CODE || "" }) });
+  check(login.status === 200, "sign in with the access code", login.status === 200 ? "" : "set SMOKE_ACCESS_CODE");
+  token = login.body && login.body.token;
+}
 check(health.status === 200 && health.body?.ok === true, "health endpoint", `engine: ${health.body?.agentEngine}`);
 
 const cc = await call("/api/command-center");

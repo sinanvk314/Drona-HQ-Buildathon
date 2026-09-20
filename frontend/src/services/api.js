@@ -9,6 +9,8 @@
 //   VITE_API_BASE_URL=http://localhost:8080/api
 // (or your deployed backend URL). Falls back to http://localhost:8080/api if unset.
 
+import { getToken, setSession } from "./session.js";
+
 // Order: VITE_API_BASE_URL if set; else, in a production build, the same origin (the backend serves the UI);
 // else the local backend for `npm run dev`.
 const env = (typeof import.meta !== "undefined" && import.meta.env) || {};
@@ -36,11 +38,15 @@ function emit() {
 }
 
 async function request(path, { method = "GET", body } = {}) {
+  const token = getToken();
+  const headers = { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  // The session expired or the server needs a code: drop it, which sends the user back to the login page.
+  if (res.status === 401 && token) setSession(null);
   const isJson = (res.headers.get("content-type") || "").includes("application/json");
   const payload = isJson ? await res.json().catch(() => ({})) : null;
   if (!res.ok) {
@@ -55,6 +61,15 @@ const get = (path) => request(path);
 const post = (path, body) => request(path, { method: "POST", body: body ?? {} }).then((r) => (emit(), r));
 const del = (path) => request(path, { method: "DELETE" }).then((r) => (emit(), r));
 const patch = (path, body) => request(path, { method: "PATCH", body: body ?? {} }).then((r) => (emit(), r));
+
+// ---------------------------------------------------------------- sign-in
+export const getAuthConfig = () => get("/auth/config");
+export async function signIn({ name, code }) {
+  const r = await request("/auth/login", { method: "POST", body: { name, code } });
+  setSession({ token: r.token, name: r.user.name });
+  return r.user;
+}
+export const signOut = () => setSession(null);
 
 // ---------------------------------------------------------------- reads
 export const getShellState = () => get("/shell");
