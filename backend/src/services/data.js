@@ -13,6 +13,9 @@ import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
 import { recordTouch } from "./outreach.js";
+import { sentToday } from "./limits.js";
+import { simClockLabel, withinWorkingHours } from "./simTime.js";
+import { config } from "../config.js";
 
 function campaignOf(s, id) {
   const c = s.campaigns.find((x) => x.id === id);
@@ -115,6 +118,7 @@ export function getCommandCenter() {
 
   return {
     now: Date.now(),
+    simClock: simClockLabel(),
     killSwitch: s.killSwitch.active,
     summary: { configured: cs.length, running: cs.filter((c) => isRunning(s, c)).length },
     kpis: [
@@ -155,6 +159,11 @@ export function getCampaign(id) {
     outreach: o,
     approvals: { count: pending.length, items: pending.slice(0, 2).map(approvalQueueItem) },
     approvalPolicy: { ...c.approvals },
+    cadence: { ...(c.cadence || { maxTouches: 3, waitHours: 72 }) },
+    limits: {
+      sentToday: sentToday(s, c), dailyLimit: c.dailyLimit, workingHours: c.workingHours,
+      withinHours: withinWorkingHours(c), simClock: simClockLabel(), enforced: config.enforceLimits,
+    },
     knowledge: c.sources.map(sourceView),
     prospects: draft ? [] : s.prospects.filter((p) => p.campaignId === id).map((p) => prospectRow(s, p)),
   };

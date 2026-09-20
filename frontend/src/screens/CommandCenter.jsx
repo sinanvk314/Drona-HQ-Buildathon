@@ -37,7 +37,7 @@ export default function CommandCenter({ routeName }) {
           <div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{greeting()}, JD</div>
             <div style={{ fontSize: 13.5, color: "var(--text-2)", marginTop: 3 }}>
-              {longDate(data.now)} · {data.summary.configured} campaigns configured, {data.summary.running} running autonomously
+              {longDate(data.now)} · {data.summary.configured} campaigns configured, {data.summary.running} running autonomously · simulated clock {data.simClock}
             </div>
           </div>
           <button type="button" className="btn btn-primary" onClick={() => navigate("createCampaign")}>

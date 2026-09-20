@@ -38,7 +38,9 @@ An autonomous, multi-channel SDR system in two halves that work as one product:
    (autonomous loop)                                       ▼
         gates: kill switch → campaign live → agent enabled → channel enabled → conflict/suppression
                                                        │
-     Lead Research → ICP Fitment → Personalisation → Approvals queue (human) → Conversation
+     Lead Research → ICP Fitment → Outreach Strategy → Personalisation → Approvals queue (human)
+                                                                              ↓
+                               Follow-up (if no reply)  ←  Conversation (if reply)
                           │               │                                          │
                  agentEngine/index.js: retrieve knowledge first (rag.js), then decide
                           │
@@ -61,6 +63,24 @@ What that means in the running system:
 - Knowledge retrieval is semantic (bge-small embeddings, run in-process) and searches only the campaign's own sources.
 - A daily cap on LLM calls (`LLM_DAILY_CALL_CAP`) makes the rule engine take over, so a demo cannot burn the quota.
 - The Command Center's **AI Efficiency** panel shows calls made, decisions with no LLM call, and estimated saving.
+
+**One SDR across channels.** A qualified prospect is handled as a sequence, not a single message:
+
+- The **Outreach Strategy agent** plans the touches (for example LinkedIn, then email, then a later email): which
+  channels, in what order, and how long to wait, only over the channels enabled for the campaign right now, within the
+  campaign's touch limit. SMS is never the opening touch and voice comes last.
+- **Personalisation** writes the opening message for the planned channel. Every touch is recorded with its channel and time.
+- If the prospect stays silent, the **Follow-up agent** writes the next touch on the next planned channel. *When* is policy
+  (the wait, the touch limit, opt-outs and the suppression list re-checked, working hours, the daily limit); *how* (the
+  message and its angle) is the agent's call. A reply ends the sequence, a rejected follow-up stops it, and a sequence that
+  runs its course is closed out with a recorded reason. Replies come back on the channel that was used.
+- **Hard limits** (working hours, the campaign's daily limit and a per-person contact-frequency cap across campaigns) gate
+  every new touch and cannot be overridden by an agent. They run on a **simulated clock** (`SIM_MS_PER_HOUR`), because sends
+  are simulated and a real 72-hour wait cannot be shown in a demo.
+- **Grounding check.** Every draft is checked after the model writes it: a figure that is not in the retrieved knowledge or
+  the prospect's data, a compliance or certification claim the knowledge does not make, a quoted price, or a specific meeting
+  time all fail it. An LLM draft gets one rewrite with the problems named; a draft that still fails is never auto-sent, whatever
+  the approval level, and goes to the Approvals queue with the issues listed.
 
 **Approval levels** (per campaign): *Manual* (every toggled action waits in the Approvals queue), *Assisted*
 (auto-approves at a chosen fit score after you have approved a few of that action yourself) and *Autonomous*.
@@ -176,6 +196,9 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `REPLY_ROUTING` | `on` | Route opt-out / hostile / out-of-office replies by embeddings. `off` disables. |
 | `SCHEDULER_INTERVAL_MS` | `12000` | How often the autonomous loop ticks |
 | `SCHEDULER_BATCH_SIZE` | `3` | Prospects advanced per campaign per tick |
+| `SIM_MS_PER_HOUR` | `3000` | Real milliseconds per simulated hour (follow-up waits, working hours, daily limit). `3600000` = real time |
+| `ENFORCE_LIMITS` | `on` | `off` stops working hours, the daily limit and the frequency cap from holding outreach back |
+| `SIM_REPLY_CHANCE` | `0.08` | Chance per tick that a contacted prospect replies (replies are simulated) |
 | `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives (point at a persistent disk when deploying) |
 | `USAGE_FILE` | `./data/usage.json` | Where the LLM call counters live |
 | `EMBEDDING_CACHE_DIR` | `./data/.embedding-cache` | Where the embedding model is cached |
@@ -312,7 +335,9 @@ as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 **Works end to end**
 - Multiple concurrent campaigns with independent Live / Paused / Draft state, dashboards and decision history.
 - Pause a campaign, pause an agent, pause a channel, or the global kill switch. Each stops exactly its own scope.
-- Autonomous loop: research → ICP fit → personalisation → approvals queue → conversation, gated at every step.
+- Autonomous loop: research → ICP fit → outreach strategy → personalisation → approvals queue → conversation, with follow-ups for silent prospects, gated at every step.
+- Multi-channel sequences with a planned channel order, a follow-up cadence that stops at the touch limit, and hard limits (working hours, daily limit, contact-frequency cap) enforced on a simulated clock.
+- A grounding check on every draft, with auto-send blocked when it fails.
 - Per-campaign knowledge base with add/remove in the UI, semantic retrieval before every decision, and the retrieved sources shown in the Decision Journal.
 - Edit a campaign after creation, and duplicate one into a new Draft to build a variant.
 - Prompt versioning per agent (save, activate an older version), with the active version recorded on each decision.
@@ -324,7 +349,7 @@ as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 - Prospect discovery generates synthetic companies (stand-in for Apollo).
 - Sending email / LinkedIn / SMS and receiving replies change state only; replies are generated from a fixed mix of
   sample messages. Meeting booking is a state change, not a calendar invite.
-- Voice SDR agent and follow-up cadence are not built. Follow-up and escalation draft text is templated, not generated.
+- The Voice SDR agent is not built.
 
 **DronaHQ.** The control-plane UI was built in DronaHQ Studio. The backend also contains an adapter for DronaHQ agents
 called through their Webhook Triggers (`AGENT_ENGINE=dronahq`). In our testing the webhook reply did not carry the
@@ -334,4 +359,4 @@ rule engine instead.
 **Other limitations**
 - No authentication or user accounts; the "JD" user is hard-coded.
 - Prompt compare and one-click rollback are stubs (activating an older version works).
-- `dailyLimit` and `workingHours` are stored and shown but not enforced by the scheduler.
+- Working hours, follow-up waits and the daily limit run on a simulated clock (`SIM_MS_PER_HOUR`), because no real sending exists. Set it to `3600000` for real time.

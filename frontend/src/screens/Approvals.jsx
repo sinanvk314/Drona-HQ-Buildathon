@@ -131,10 +131,22 @@ export default function Approvals({ params }) {
                 <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>{item.recommendation.body}</div>
               </div>
 
+              {item.warnings && item.warnings.length > 0 && (
+                <div className="card" style={{ padding: "14px 18px", background: "var(--danger-soft)", borderColor: "#F2C7C7" }}>
+                  <div className="section-title" style={{ marginBottom: 6, color: "var(--danger)" }}>Grounding check failed</div>
+                  <ul style={{ margin: "0 0 8px 0", paddingLeft: 16, listStyle: "disc", fontSize: 12.5, lineHeight: 1.6 }}>
+                    {item.warnings.map((w) => <li key={w}>{w}</li>)}
+                  </ul>
+                  <div style={{ fontSize: 12, color: "var(--text-2)" }}>
+                    This draft was not sent automatically. Edit it to remove the unsupported claim, or reject it.
+                  </div>
+                </div>
+              )}
+
               <div className="card" style={{ padding: 20 }}>
                 <div className="section-title" style={{ marginBottom: 8 }}>Draft Message</div>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
-                  <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>Subject: {item.draft.subject}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>{item.channel ? `Channel: ${item.channel} · ` : ""}Subject: {item.draft.subject}</div>
                   {editing ? (
                     <>
                       <textarea

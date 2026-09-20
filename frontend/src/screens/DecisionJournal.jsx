@@ -25,6 +25,7 @@ const ENGINE_LABEL = {
   "rule-shortcut": "Rule shortcut · no LLM call",
   "embedding-router": "Embedding router · no LLM call",
   "auto-approval": "Auto-approved by policy",
+  policy: "Policy gate · no LLM call",
 };
 
 function Gutter({ first, last, expanded, color }) {

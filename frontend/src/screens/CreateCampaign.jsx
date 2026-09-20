@@ -259,6 +259,14 @@ export default function CreateCampaign({ params = {} }) {
                 <input id="cc-hours" className={cls("workingHours")} value={v.workingHours} onChange={(e) => set("workingHours", e.target.value)} />
               </Field>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Touches per Prospect" htmlFor="cc-touches" hint="the opening message plus follow-ups; the Follow-up agent stops here">
+                <input id="cc-touches" type="number" min="1" max="6" className="input" value={v.cadence ? v.cadence.maxTouches : 3} onChange={(e) => set("cadence", { ...v.cadence, maxTouches: e.target.value })} />
+              </Field>
+              <Field label="Wait Between Touches (hours)" htmlFor="cc-wait" hint="simulated hours, 24 to 168">
+                <input id="cc-wait" type="number" min="24" max="168" className="input" value={v.cadence ? v.cadence.waitHours : 72} onChange={(e) => set("cadence", { ...v.cadence, waitHours: e.target.value })} />
+              </Field>
+            </div>
           </div>
         </div>
 

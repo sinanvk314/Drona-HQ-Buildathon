@@ -141,6 +141,22 @@ export default function ProspectDetail({ params }) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {p.plan && (
+            <div className="card" style={CARD}>
+              <div className="section-title">Outreach Plan</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {p.plan.sequence.map((ch, i) => (
+                  <Tag key={i} tone={i < p.touches.length ? "accent" : undefined}>{i + 1}. {ch}{i < p.touches.length ? " · sent" : ""}</Tag>
+                ))}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 10, lineHeight: 1.5 }}>{p.plan.reasoning}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8 }}>
+                Planned by the Outreach Strategy Agent · {p.plan.engine} · {p.plan.waitHours}h (simulated) between touches
+                {p.closedOut ? " · sequence closed: no reply" : p.nextTouchTs ? ` · next follow-up in about ${Math.max(0, Math.round((p.nextTouchTs - Date.now()) / 1000))}s` : ""}
+              </div>
+            </div>
+          )}
+
           <div className="card" style={CARD}>
             <div className="section-title">Outreach History</div>
             {p.history.length === 0 && <div style={{ fontSize: 13, color: "var(--text-2)" }}>No outreach yet.</div>}

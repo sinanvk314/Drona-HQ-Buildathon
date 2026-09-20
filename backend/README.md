@@ -81,6 +81,15 @@ Decisions are split into **matching** (geometry, free) and **judgment** (an LLM)
 - **Approval levels** per campaign (`approvals.level`): `manual` (toggled actions wait for a human), `assisted`
   (auto-approve at fit >= `autoMinScore` after `autoAfterApproved` human approvals of that action), `autonomous`.
   Escalated objections always need a human.
+- **Outreach strategy and follow-up.** `agentEngine/index.js` `planOutreach` (Outreach Strategy agent) plans each qualified prospect's
+  channel sequence; `draftFollowUp` (Follow-up agent) writes later touches. `services/scheduler.js` runs
+  `runStrategy` and `runFollowUp` as stages. Every touch goes through `services/outreach.js` `recordTouch`, and
+  `services/limits.js` gates working hours, the daily limit and the contact-frequency cap on the simulated clock in
+  `services/simTime.js`.
+- **Grounding check** (`services/grounding.js`): figures, compliance claims, prices and meeting times in a draft are checked
+  against the retrieved knowledge and the prospect's data; a failing draft is rewritten once, and never auto-sent.
+- **Additive migration** (`db/migrate.js`): on every start, saved state gains any new agents and fields without removing or
+  overwriting anything, so upgrades never wipe campaigns.
 - **Knowledge sources** are per campaign: either a shipped document (`docId` -> `data/knowledge/<docId>.txt`) or text
   added in the UI (`content`). Add and remove from the campaign page (`POST /campaigns/:id/sources`,
   `DELETE /campaigns/:id/sources/:sourceId`).

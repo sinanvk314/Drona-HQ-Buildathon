@@ -10,7 +10,7 @@ const kb = (chars) => (chars ? `${Math.max(1, Math.round(chars / 1000))} KB` : "
 
 // A live campaign's knowledge base and approval policy. Sources are per campaign: agents in this
 // campaign retrieve only from this list, so adding or removing a source changes their next decision.
-export default function KnowledgePanel({ campaignId, sources, policy }) {
+export default function KnowledgePanel({ campaignId, sources, policy, cadence }) {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState(null);
@@ -79,6 +79,7 @@ export default function KnowledgePanel({ campaignId, sources, policy }) {
           <div style={{ display: "flex", justifyContent: "space-between" }}><span>First outreach</span><strong>{policy.firstOutreach ? "Needs approval" : "Automatic"}</strong></div>
           <div style={{ display: "flex", justifyContent: "space-between" }}><span>Meeting time</span><strong>{policy.meetingTime ? "Needs approval" : "Automatic"}</strong></div>
           <div style={{ display: "flex", justifyContent: "space-between" }}><span>Objections</span><strong>{policy.escalate ? "Human escalation" : "Agent handles"}</strong></div>
+          {cadence && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Follow-up cadence</span><strong>{cadence.maxTouches} touches, {cadence.waitHours}h apart</strong></div>}
         </div>
       </div>
 

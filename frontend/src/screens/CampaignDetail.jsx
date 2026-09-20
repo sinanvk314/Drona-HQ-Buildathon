@@ -127,6 +127,20 @@ export default function CampaignDetail({ params }) {
                   <strong>{value}</strong>
                 </div>
               ))}
+              {c.limits && c.limits.enforced && !draft && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span>Touches today (simulated day)</span>
+                    <strong>{c.limits.sentToday}{c.limits.dailyLimit ? ` / ${c.limits.dailyLimit}` : ""}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span>Working hours</span>
+                    <strong style={{ color: c.limits.withinHours ? "var(--success)" : "var(--warning)" }}>
+                      {c.limits.withinHours ? "Open" : "Closed"} · simulated {c.limits.simClock}
+                    </strong>
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
                 <span>Est. cost / qualified lead</span>
                 <strong>{draft || !o.costPerQualified ? "—" : `$${o.costPerQualified.toFixed(2)}`}</strong>
@@ -162,7 +176,7 @@ export default function CampaignDetail({ params }) {
           </div>
         </div>
 
-        <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} />
+        <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} cadence={c.cadence} />
 
         <div className="card">
           <div style={{ padding: "18px 20px 4px 20px", fontSize: 14, fontWeight: 700 }}>Prospects</div>
