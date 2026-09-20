@@ -40,7 +40,7 @@ async function withFallback(llmCall, ruleCall, dronahqCall, geminiCall) {
       recordLlmDecision();
       return result;
     } catch (e) {
-      recordLlmError();
+      recordLlmError(e.message, name);
       if (isStrict(name)) throw e;
       failures.push(`${name}: ${e.message}`);
       console.warn(`[agentEngine] ${name} failed (${e.message}); trying the next engine`);

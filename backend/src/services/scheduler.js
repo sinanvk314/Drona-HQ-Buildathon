@@ -108,6 +108,12 @@ async function runDiscovery(s, campaign) {
     const leadAgent = agentById(s, "lead");
     const avoid = s.prospects.filter((p) => p.campaignId === campaign.id).map((p) => p.name);
     const found = await engine.sourceProspects({ campaign, count: 3, avoid, leadAgent });
+    // The AI search failed (quota, key, network): wait and say so. Inventing prospects from name lists would fill the campaign with
+    // people who are all rejected. The free generator is only used when no model is configured at all.
+    if (!found.candidates && found.fallbackReason) {
+      recordFailure(s, campaign, null, "discovery", new Error(`the AI people search is unavailable, so no prospects were added (${found.fallbackReason.slice(0, 200)})`));
+      return;
+    }
     const provider = "imitated search (AI, fictional people)";
     const prospects = found.candidates
       ? found.candidates.map((c) => {
@@ -212,7 +218,8 @@ function autoApproval(s, campaign, prospect, type) {
 async function runIcpFitment(s, campaign) {
   if (!agentEnabled(s, "icp", campaign)) return;
   const icpAgent = agentById(s, "icp");
-  const batch = s.prospects.filter((p) => p.campaignId === campaign.id && p.stage === "researched" && p.fit == null).slice(0, config.schedulerBatchSize);
+  const now0 = Date.now();
+  const batch = s.prospects.filter((p) => p.campaignId === campaign.id && p.stage === "researched" && p.fit == null && !(p.icpRetryAt > now0)).slice(0, config.schedulerBatchSize);
 
   for (const prospect of batch) {
     try {
@@ -230,6 +237,14 @@ async function runIcpFitment(s, campaign) {
         continue;
       }
       const result = await engine.scoreICP({ state: s, campaign, prospect, icpAgent });
+      // The model failed and the rules cannot judge this criteria (no numeric size to compare): do not reject anyone on a guess.
+      // The prospect waits and is tried again in a minute.
+      if (result.engine === "rule" && result.fallbackReason && result.judgeable === false) {
+        prospect.icpRetryAt = Date.now() + 60 * 1000;
+        prospect.nextStep = "Waiting for the AI to judge fit";
+        recordFailure(s, campaign, prospect, "icp", new Error(`the AI could not be reached and the rules cannot judge this audience, so ${prospect.name} was not rejected (${String(result.fallbackReason).slice(0, 200)})`));
+        continue;
+      }
       prospect.fit = result.score;
       prospect.reasons = result.reasons;
       prospect.evidence = result.evidence;

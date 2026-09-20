@@ -1225,6 +1225,12 @@ export function inspectPrompt(campaignId, agentId, harness = "") {
   };
 }
 
+/** The last model error if it happened in the past ten minutes (a healthy model clears it by not failing again). */
+function recentGeminiError() {
+  const e = getUsage().lastError;
+  return e && Date.now() - e.ts < 10 * 60 * 1000 ? e.message : null;
+}
+
 /** What is actually connected, worked out from the running configuration (never a stored list). */
 function integrationStatus() {
   const emb = embeddingsStatus();
@@ -1233,8 +1239,8 @@ function integrationStatus() {
   return [
     {
       name: "Gemini", kind: "Model",
-      state: geminiKey && isGeminiMode() ? "connected" : geminiKey ? "idle" : "not-configured",
-      note: geminiKey && isGeminiMode() ? `Deciding and writing. Models: ${String(config.gemini.model)}` : geminiKey ? "Key is set but AGENT_ENGINE does not include gemini" : "No GEMINI_API_KEY: the rule engine decides instead",
+      state: geminiKey && isGeminiMode() ? (recentGeminiError() ? "problem" : "connected") : geminiKey ? "idle" : "not-configured",
+      note: geminiKey && isGeminiMode() ? (recentGeminiError() ? `Failing: ${recentGeminiError()}` : `Deciding and writing. Models: ${String(config.gemini.model)}`) : geminiKey ? "Key is set but AGENT_ENGINE does not include gemini" : "No GEMINI_API_KEY: the rule engine decides instead",
     },
     {
       name: "Local embeddings (RAG)", kind: "Model",

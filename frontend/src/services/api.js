@@ -180,3 +180,4 @@ export const getEmailStatus = () => get("/dev/email");
 export const testEmailConnection = () => post("/dev/email/connection");
 export const sendTestEmail = (to) => post("/dev/email/test", { to });
 export const checkInboxNow = () => post("/dev/email/check");
+export const testGemini = () => post("/dev/gemini/test");

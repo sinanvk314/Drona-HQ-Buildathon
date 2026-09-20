@@ -123,17 +123,17 @@ test("a campaign on the imitated search gets fictional prospects, labelled as su
   c.sourcing = "synthetic";
 });
 
-test("when the search is unavailable the campaign keeps moving on the free generator", async () => {
+test("when the AI search fails, the campaign waits and reports it instead of inventing people from name lists", async () => {
   status = 500;
   config.agentEngine = "gemini";
   const c = campaign("c_ai_founders");
   c.sourcing = "simulated-search";
   c.lastSourcedAt = 0;
-  const before = state().prospects.length;
+  const failuresBefore = (c.failures && c.failures.total) || 0;
+  const before = state().prospects.filter((p) => p.campaignId === c.id).length;
   await tick();
-  assert.ok(state().prospects.length > before, "a prospect was still added");
-  const added = state().prospects.slice(before);
-  assert.ok(added.some((p) => p.source && p.source.provider === "synthetic generator"));
+  assert.equal(state().prospects.filter((p) => p.campaignId === c.id).length, before, "nobody was invented");
+  assert.ok(c.failures.total > failuresBefore, "the failure is visible");
   c.sourcing = "synthetic";
 });
 

@@ -91,9 +91,10 @@ export function recordLlmDecision() {
   save();
 }
 
-export function recordLlmError() {
+export function recordLlmError(message = "", engine = "") {
   rollDay();
   usage.llmErrors += 1;
+  if (message) usage.lastError = { message: String(message).slice(0, 400), engine, ts: Date.now() };
   save();
 }
 
@@ -145,6 +146,7 @@ export function getUsage() {
   const costPerLlmDecision = usage.llmDecisions ? estCostUsd / usage.llmDecisions : config.estCostPerLlmCall;
 
   return {
+    lastError: usage.lastError || null,
     day: usage.day,
     llmCalls: usage.llmCalls,
     llmDecisions: usage.llmDecisions,

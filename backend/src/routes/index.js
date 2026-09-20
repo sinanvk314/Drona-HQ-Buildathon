@@ -65,6 +65,7 @@ router.get("/dev/email", asyncRoute(async (req, res) => res.json(dev.getEmailSta
 router.post("/dev/email/connection", asyncRoute(async (req, res) => res.json(await dev.testEmailConnection())));
 router.post("/dev/email/test", asyncRoute(async (req, res) => res.json(await dev.sendTestEmail(req.body || {}))));
 router.post("/dev/email/check", asyncRoute(async (req, res) => res.json(await dev.checkInboxNow())));
+router.post("/dev/gemini/test", asyncRoute(async (req, res) => res.json(await dev.testGemini())));
 router.get("/dev/runtime", asyncRoute(async (req, res) => res.json(dev.getRuntime())));
 router.get("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.listSandboxes())));
 router.post("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.createSandbox(req.body || {}))));

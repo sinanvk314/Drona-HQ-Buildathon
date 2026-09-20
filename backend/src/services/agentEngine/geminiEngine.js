@@ -511,3 +511,9 @@ export async function geminiResolveMeetingReply({ campaign, prospect, slots, rep
   const out = await generate({ agent: "conversation", campaignId: campaign.id, system: MEETING_REPLY_SYSTEM, input, schema: MEETING_REPLY_SCHEMA });
   return normalizeMeetingReply(out, slots.length);
 }
+
+/** A one-word question, answered by the same models in the same order: the quickest way to see whether Gemini works and why not. */
+export async function geminiPing() {
+  const out = await generate({ agent: "ping", campaignId: null, system: "Reply with ok set to true.", input: { ping: true }, schema: { type: "OBJECT", properties: { ok: { type: "BOOLEAN" } }, required: ["ok"] } });
+  return { ok: out && out.ok === true };
+}

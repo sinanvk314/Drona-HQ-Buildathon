@@ -14,7 +14,7 @@ import { currentUser } from "./auth.js";
 import * as data from "./data.js";
 import * as engine from "./agentEngine/index.js";
 import { processReply, tickCampaign } from "./scheduler.js";
-import { getUsage } from "./usage.js";
+import { getUsage, recordLlmError } from "./usage.js";
 import { embeddingsStatus } from "./embeddings.js";
 import { newProspect } from "./prospects.js";
 import { addFact } from "./dossier.js";
@@ -240,7 +240,7 @@ export function getRuntime() {
   return {
     engines: activeEngine(),
     gemini: { keyConfigured: !!config.gemini.apiKey, models: String(config.gemini.model), ratePerMinute: config.gemini.rpm },
-    llm: { callsToday: u.llmCalls, dailyCap: config.llmDailyCallCap, capReached: u.capReached, tokensIn: u.tokensIn, tokensOut: u.tokensOut, estCostUsd: u.estCostUsd },
+    llm: { lastError: u.lastError, callsToday: u.llmCalls, dailyCap: config.llmDailyCallCap, capReached: u.capReached, tokensIn: u.tokensIn, tokensOut: u.tokensOut, estCostUsd: u.estCostUsd },
     embeddings: embeddingsStatus(),
     clock: { simMsPerHour: config.simMsPerHour, note: `A simulated day lasts ${Math.round((24 * config.simMsPerHour) / 1000)} seconds` },
     meetings: { timezone: config.meetingTimezone, minutes: config.meetingMinutes },
@@ -310,4 +310,19 @@ export async function checkInboxNow() {
   }
   await persistState();
   return out;
+}
+
+/** Asks Gemini a trivial question now and reports exactly what came back, so a failing key, model or quota is never a mystery. */
+export async function testGemini() {
+  if (!config.gemini.apiKey) throw new Error("No GEMINI_API_KEY is set on this server.");
+  const { geminiPing } = await import("./agentEngine/geminiEngine.js");
+  const started = Date.now();
+  let r;
+  try {
+    r = await geminiPing();
+  } catch (e) {
+    recordLlmError(e.message, "gemini"); // shown on Settings and Runtime until Gemini works again
+    throw e;
+  }
+  return { ok: r.ok, ms: Date.now() - started, models: String(config.gemini.model), note: "Gemini answered. Decisions and drafts are being made by the model." };
 }
