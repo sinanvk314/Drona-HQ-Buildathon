@@ -89,18 +89,20 @@ export function ruleDraftOutreach({ campaign, prospect, knowledge, override, cha
   const fact =
     (prospect.reasons && prospect.reasons[0]) ||
     (prospect.tech && prospect.tech.length ? `your use of ${prospect.tech[0]}` : `${prospect.company}'s recent growth`);
-  const productLine = knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : "NimbusGuard's cloud cost and security layer";
+  const productLine = knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : offerLine(campaign);
   const tone = override ? ` (${override})` : "";
   const body = `Hi ${prospect.name.split(" ")[0]} — noticed ${fact.toLowerCase()}. ${productLine} Worth a quick look?`;
   return {
     channel,
-    subject: `Cutting cloud spend at ${prospect.company}`,
+    subject: `A note for ${prospect.name.split(" ")[0]} at ${prospect.company}`,
     body,
     reasoning: `Chose ${channel} as the lead channel for this campaign and referenced a real signal from the research record${tone}.`,
   };
 }
 
 const firstSentence = (knowledge, fallback) => (knowledge && knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : fallback);
+// What the campaign offers, as one sentence, for when no knowledge was retrieved.
+const offerLine = (campaign) => (campaign && campaign.offer ? campaign.offer.split(/(?<=[.!?])\s/)[0] : "We would like to share something that may be useful to you.");
 
 /** Conversation & Follow-up Agent: decide how to react to the prospect's latest reply, and draft the answer. */
 export function ruleHandleConversation({ campaign, prospect, knowledge }) {
@@ -127,7 +129,7 @@ export function ruleHandleConversation({ campaign, prospect, knowledge }) {
   return {
     action: "followup",
     reasoning: "No clear objection or meeting intent yet; sending a contextual follow-up.",
-    draft: `Hi ${first}, thanks for getting back to me. ${firstSentence(knowledge, "NimbusGuard finds cloud waste without a migration.")} Happy to go into more detail on a short call.`,
+    draft: `Hi ${first}, thanks for getting back to me. ${firstSentence(knowledge, offerLine(campaign))} Happy to go into more detail on a short call.`,
   };
 }
 
@@ -156,9 +158,9 @@ export function ruleStrategy({ campaign, prospect, allowedChannels, maxTouches, 
 }
 
 /** Follow-up Agent: a short, different message for the next channel in the plan. */
-export function ruleFollowUp({ prospect, knowledge, channel, touchNumber, isLast }) {
+export function ruleFollowUp({ campaign, prospect, knowledge, channel, touchNumber, isLast }) {
   const first = (prospect.name || "there").split(" ")[0];
-  const fact = firstSentence(knowledge, "NimbusGuard finds cloud waste without a migration.");
+  const fact = firstSentence(knowledge, offerLine(campaign));
   const body = isLast
     ? `Hi ${first}, this is my last note. ${fact} If it is ever useful, I am glad to share more.`
     : `Hi ${first}, one more thought. ${fact} Worth a short look?`;

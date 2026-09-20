@@ -3,6 +3,7 @@ import Shell from "../components/shell/Shell.jsx";
 import { useNav } from "../components/shell/NavContext.jsx";
 import { StatusBadge } from "../components/ui/Badge.jsx";
 import { useApi } from "../hooks/useApi.js";
+import LoadState from "../components/ui/LoadState.jsx";
 import { getComparison } from "../services/api.js";
 
 const money = (n) => (n == null ? "n/a" : `$${n.toFixed(n < 0.1 ? 4 : 2)}`);
@@ -45,14 +46,14 @@ function bestIndex(rows, field, better) {
 // Campaigns side by side (PS: how do managers compare performance across campaigns, and a campaign against a variant of it).
 export default function Compare({ params = {} }) {
   const { navigate } = useNav();
-  const { data: all } = useApi(() => getComparison(), []);
+  const { data: all, error } = useApi(() => getComparison(), []);
   const [selected, setSelected] = useState(params.ids || null);
 
   useEffect(() => {
     if (all && !selected) setSelected(all.map((r) => r.id));
   }, [all]);
 
-  if (!all || !selected) return <Shell active="analytics" title="Compare Campaigns"><div /></Shell>;
+  if (!all || !selected) return <Shell active="analytics" title="Compare Campaigns"><LoadState error={error} what="compare campaigns" /></Shell>;
   const rows = all.filter((r) => selected.includes(r.id));
   const toggle = (id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 

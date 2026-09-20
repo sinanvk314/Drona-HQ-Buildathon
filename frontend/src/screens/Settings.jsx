@@ -6,6 +6,7 @@ import { ConfirmDialog, Modal } from "../components/ui/Modal.jsx";
 import Toggle from "../components/ui/Toggle.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
+import LoadState from "../components/ui/LoadState.jsx";
 import { addSuppression, getSettings, setAgentEnabled, setChannelEnabled, setKillSwitch } from "../services/api.js";
 import { timeAgo } from "../utils/format.js";
 import { validateSuppression } from "../utils/validation.js";
@@ -14,13 +15,13 @@ const STATUS_LABEL = { running: "Running", paused: "Paused", stopped: "Stopped" 
 
 export default function Settings() {
   const toast = useToast();
-  const { data } = useApi(() => getSettings(), []);
+  const { data, error } = useApi(() => getSettings(), []);
   const [confirming, setConfirming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ contact: "", reason: "" });
   const [errors, setErrors] = useState({});
 
-  if (!data) return <Shell active="settings" title="Global Controls & Settings"><div /></Shell>;
+  if (!data) return <Shell active="settings" title="Global Controls & Settings"><LoadState error={error} what="settings" /></Shell>;
 
   const killed = data.killSwitch.active;
   const guard = async (fn, okMessage) => {

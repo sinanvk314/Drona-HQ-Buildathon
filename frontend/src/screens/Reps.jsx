@@ -6,6 +6,7 @@ import { ConfirmDialog, Modal } from "../components/ui/Modal.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import Icon from "../components/ui/Icon.jsx";
 import { useApi } from "../hooks/useApi.js";
+import LoadState from "../components/ui/LoadState.jsx";
 import { createRep, getReps, offboardRep, reassignRep, updateRep } from "../services/api.js";
 import { CHANNEL_KEYS, CHANNEL_LABELS } from "../data/constants.js";
 
@@ -72,12 +73,12 @@ function RepForm({ initial, onClose, onSave }) {
 export default function Reps() {
   const { navigate } = useNav();
   const toast = useToast();
-  const { data } = useApi(() => getReps(), []);
+  const { data, error } = useApi(() => getReps(), []);
   const [form, setForm] = useState(null);
   const [offboarding, setOffboarding] = useState(null);
   const [reassigning, setReassigning] = useState(null); // { rep, to }
 
-  if (!data) return <Shell active="reps" title="Representatives"><div /></Shell>;
+  if (!data) return <Shell active="reps" title="Representatives"><LoadState error={error} what="representatives" /></Shell>;
   const active = data.reps.filter((r) => r.status === "active");
 
   const guard = async (fn, message) => {

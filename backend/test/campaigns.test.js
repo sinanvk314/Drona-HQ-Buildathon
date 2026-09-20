@@ -100,3 +100,27 @@ test("the launch review says what a manager needs to know before activating, and
   assert.equal(data.getLaunchReview(created.id).ready, false);
   state.channels.forEach((c) => (c.enabled = true));
 });
+
+test("a new campaign starts blank, and its brief and offer are what the agents are given", async () => {
+  const blank = data.getCampaignDefaults();
+  for (const k of ["name", "description", "objective", "offer", "brief", "icpText", "companyCriteria", "exclusionCriteria", "qualificationPrompt"]) {
+    assert.equal(blank[k], "", `${k} must not be pre-filled with example content`);
+  }
+  assert.deepEqual([blank.geography, blank.personas, blank.sources], [[], [], []]);
+  assert.equal(blank.approvals.level, "manual");
+
+  const { composePrompt } = await import("../src/services/prompts.js");
+  const created = data.createCampaign({
+    ...blank, name: "Student leaders", offer: "A free workshop series for student clubs.", brief: "Write like a friendly senior student. Never pressure anyone.",
+  }, { launch: false });
+  const c = getState().campaigns.find((x) => x.id === created.id);
+  assert.equal(c.offer, "A free workshop series for student clubs.");
+  const prompt = composePrompt(getState().agents.find((a) => a.id === "personalisation"), c);
+  assert.match(prompt.text, /^Write like a friendly senior student/, "the brief is the campaign's first prompt");
+
+  const defaulted = data.createCampaign({ ...blank, name: "No brief", offer: "A thing." }, { launch: false });
+  assert.match(composePrompt(getState().agents.find((a) => a.id === "icp"), getState().campaigns.find((x) => x.id === defaulted.id)).text, /What we offer: A thing\./);
+
+  assert.throws(() => data.createCampaign({ ...blank, name: "Needs an offer", description: "d", objective: "o", icpText: "i", geography: ["India"], personas: ["Founder"], qualificationPrompt: "q", workingHours: "9-5", dailyLimit: 5 }, { launch: true }), (e) => Boolean(e.fields && e.fields.offer));
+  assert.equal(data.getLaunchReview(created.id).checks.some((k) => k.key === "offer" && k.status === "block"), false, "an offer is present");
+});

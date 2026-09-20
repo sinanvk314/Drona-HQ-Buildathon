@@ -17,6 +17,7 @@ export function defaultSystemPrompt(c) {
   return (
     `You are an SDR working the "${c.name}" campaign. Objective: ${c.objective || "book qualified meetings"}. ` +
     `Audience: ${c.icpSummary || c.icpText || "the campaign's ICP"}. ` +
+    (c.offer ? `What we offer: ${c.offer} ` : "") +
     `Stay within this campaign's approved knowledge, never contact anyone outside its ICP, and escalate anything you cannot answer from that knowledge.`
   );
 }

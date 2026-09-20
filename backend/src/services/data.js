@@ -242,7 +242,7 @@ const union = (options, chosen) => [...options, ...chosen.filter((x) => !options
 // The form values for a campaign, in the shape the create/edit form uses.
 function formValues(c) {
   return {
-    name: c.name, description: c.description, owner: c.owner, objective: c.objective, icpText: c.icpText,
+    name: c.name, description: c.description, owner: c.owner, objective: c.objective, offer: c.offer || "", icpText: c.icpText,
     geographyOptions: union(GEOGRAPHY_OPTIONS, c.geography), geography: [...c.geography],
     personaOptions: union(PERSONA_OPTIONS, c.personas), personas: [...c.personas],
     companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: [...c.channels],
@@ -252,11 +252,19 @@ function formValues(c) {
   };
 }
 
+/**
+ * A blank campaign for the create form. Nothing is pre-filled with example content: the form's own hints say what each
+ * field is for. Only structural defaults (manual approvals, one channel, sensible limits) are set.
+ */
 export function getCampaignDefaults() {
-  const s = getState();
-  const c = s.campaigns.find((x) => x.id === "c_ai_founders") || s.campaigns[0];
-  // A new campaign starts with a template's settings but at the safest approval level.
-  return { ...formValues(c), approvals: { ...c.approvals, level: "manual" }, sources: c.sources.map((x) => ({ ...x })) };
+  return {
+    name: "", description: "", owner: currentUser(), objective: "", offer: "", brief: "", icpText: "",
+    geographyOptions: [...GEOGRAPHY_OPTIONS], geography: [], personaOptions: [...PERSONA_OPTIONS], personas: [],
+    companyCriteria: "", exclusionCriteria: "", channels: ["email"], qualificationPrompt: "",
+    dailyLimit: 25, workingHours: "9:00 AM – 6:00 PM", cadence: { maxTouches: 3, waitHours: 72 },
+    approvals: { firstOutreach: true, meetingTime: true, escalate: true, level: "manual", autoMinScore: 85, autoAfterApproved: 3 },
+    sources: [],
+  };
 }
 
 /** An existing campaign's settings, for the edit form. Knowledge sources are edited from the campaign page. */
@@ -318,6 +326,7 @@ export function getLaunchReview(id) {
 
   // Required settings are complete (the same validation launching enforces).
   const errors = validateCampaign({ ...c, geography: c.geography, personas: c.personas }, true);
+  if (!(c.offer || "").trim()) add("offer", "What we offer", "block", "Say what this campaign offers. Agents can only make claims that appear in the offer or the knowledge sources.");
   if (Object.keys(errors).length) add("config", "Campaign settings", "block", `Missing or invalid: ${Object.values(errors).join(" ")}`);
   else add("config", "Campaign settings", "ok", "Name, ICP, targeting, qualification criteria and limits are filled in.");
 
@@ -572,7 +581,7 @@ export function createCampaign(values, { launch = false } = {}) {
     const name = values.name.trim();
     s.campaigns.push({
       id, name, shortName: name, status: launch ? "live" : "draft",
-      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), description: (values.description || "").trim(),
+      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), offer: (values.offer || "").trim(), description: (values.description || "").trim(),
       icpSummary: [(values.personas || []).join(" & "), (values.geography || []).join(", ")].filter(Boolean).join(" · "),
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
@@ -582,6 +591,8 @@ export function createCampaign(values, { launch = false } = {}) {
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
     initCampaignPrompts(s.campaigns[s.campaigns.length - 1], s.agents, currentUser());
+    // The brief written on the form becomes the campaign's first prompt; empty keeps the generated default.
+    if ((values.brief || "").trim()) s.campaigns[s.campaigns.length - 1].systemPrompt.versions[0].text = values.brief.trim();
     if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by ${currentUser()}` });
     return { id, status: launch ? "live" : "draft" };
   });
@@ -603,6 +614,7 @@ export function updateCampaign(id, values = {}) {
     c.description = (values.description || "").trim();
     c.owner = (values.owner || "").trim() || c.owner;
     c.objective = (values.objective || "").trim();
+    c.offer = (values.offer || "").trim();
     c.icpText = (values.icpText || "").trim();
     c.geography = values.geography || [];
     c.personas = values.personas || [];

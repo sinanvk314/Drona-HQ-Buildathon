@@ -19,6 +19,15 @@ export function migrate(state, now = Date.now()) {
     changed = true;
   }
 
+  // What each campaign offers: the seeded campaigns get their seeded offer; any other campaign starts from its description.
+  for (const c of state.campaigns) {
+    if (typeof c.offer !== "string") {
+      const seeded = fresh.campaigns.find((f) => f.id === c.id);
+      c.offer = seeded ? seeded.offer : c.description || c.objective || "";
+      changed = true;
+    }
+  }
+
   for (const c of state.campaigns) {
     if (!c.cadence) {
       c.cadence = { maxTouches: 3, waitHours: 72 };

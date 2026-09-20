@@ -37,7 +37,7 @@ function allowedText({ knowledge = [], prospect = {}, campaign = {} }) {
     ...(prospect.tech || []), ...(prospect.reasons || []), ...(prospect.evidence || []),
     ...(prospect.history || []).map((h) => h.text),
     ...(prospect.conversation || []).map((m) => m.text),
-    campaign.icpText, campaign.description, campaign.companyCriteria,
+    campaign.icpText, campaign.description, campaign.companyCriteria, campaign.offer,
   ];
   return parts.filter(Boolean).join(" \n ");
 }

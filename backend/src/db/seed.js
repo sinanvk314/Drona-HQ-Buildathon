@@ -40,6 +40,8 @@ export function buildSeed(now) {
   const campaigns = [
     {
       id: "c_us_saas",
+      offer:
+        "A cloud cost and security layer that finds wasted spend and security gaps across AWS, GCP and Azure in days, using read-only access and no migration.",
       name: "US SaaS CTO Outreach",
       shortName: "US SaaS CTO",
       status: "live",
@@ -69,6 +71,8 @@ export function buildSeed(now) {
     },
     {
       id: "c_india_bfsi",
+      offer:
+        "A cloud cost and security layer that gives regulated lenders and insurers cost and posture visibility with in-country data residency, read-only access and dedicated tenancy.",
       name: "India BFSI CIO Outreach",
       shortName: "India BFSI CIO",
       status: "paused",
@@ -97,6 +101,8 @@ export function buildSeed(now) {
     },
     {
       id: "c_ai_founders",
+      offer:
+        "A cloud and inference cost layer that shows AI startups where GPU and cloud spend leaks, read-only and without a migration.",
       name: "AI Startup Founders",
       shortName: "AI Startup Founders",
       status: "live",
@@ -392,7 +398,7 @@ export function buildSeed(now) {
       description: "Decides channel and timing, then drafts contextual outreach using retrieved knowledge.",
       enabled: true, disabledBy: null, disabledTs: null,
       versions: [
-        V("v4.1", "Priya S.", "Sep 17", "active", "You are the Personalisation & Outreach Strategy agent for NimbusGuard's SDR system. Given a qualified prospect and retrieved knowledge, decide the best channel and timing, then draft a short, specific first message referencing one real fact about the prospect. Never fabricate details not present in the research record. Match tone to the campaign's configured voice.", "Priya S.", days(2)),
+        V("v4.1", "Priya S.", "Sep 17", "active", "You are the Personalisation agent for this campaign's SDR. Given a qualified prospect and retrieved knowledge, decide the best channel and timing, then draft a short, specific first message referencing one real fact about the prospect. Never fabricate details not present in the research record. Match tone to the campaign's configured voice.", "Priya S.", days(2)),
         V("v4.0", "Rohit K.", "Sep 14", "archived", "You are the Personalisation & Outreach Strategy agent. Given a qualified prospect, choose the best channel and draft a short first message that references one fact from the research record. Keep the tone consistent with the campaign.", null, null),
         V("v3.2", "Priya S.", "Sep 10", "archived", "You are the outreach agent. Draft a first message for each qualified prospect using the research record and the campaign tone. Keep it under 90 words.", null, null),
         V("v3.1", "JD", "Sep 6", "archived", "You are the outreach agent. Draft a short first message for each qualified prospect and pick email unless the campaign says otherwise.", null, null),

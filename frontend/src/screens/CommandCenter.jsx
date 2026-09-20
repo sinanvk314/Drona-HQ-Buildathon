@@ -8,6 +8,7 @@ import Icon from "../components/ui/Icon.jsx";
 import RichText from "../components/ui/RichText.jsx";
 import { Tag } from "../components/ui/Badge.jsx";
 import { useApi } from "../hooks/useApi.js";
+import LoadState from "../components/ui/LoadState.jsx";
 import { useCampaignActions } from "../hooks/useCampaignActions.js";
 import { getCommandCenter } from "../services/api.js";
 import { fmt, greeting, longDate, timeAgo } from "../utils/format.js";
@@ -18,7 +19,7 @@ export default function CommandCenter({ routeName }) {
   const { navigate } = useNav();
   const act = useCampaignActions();
   const session = useSession();
-  const { data } = useApi(() => getCommandCenter(), []);
+  const { data, error } = useApi(() => getCommandCenter(), []);
   const campaignsRef = useRef(null);
   const ready = !!data;
   const isCampaigns = routeName === "campaigns";
@@ -28,7 +29,7 @@ export default function CommandCenter({ routeName }) {
   }, [ready]);
 
   const shellProps = { active: isCampaigns ? "campaigns" : "command", title: isCampaigns ? "Campaigns" : "Command Center" };
-  if (!data) return <Shell {...shellProps}><div /></Shell>;
+  if (!data) return <Shell {...shellProps}><LoadState error={error} what="the dashboard" /></Shell>;
 
   const { approvals } = data;
 

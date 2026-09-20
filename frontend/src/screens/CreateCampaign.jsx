@@ -181,31 +181,39 @@ export default function CreateCampaign({ params = {} }) {
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field label="Campaign Name" htmlFor="cc-name" error={errors.name}>
-              <input id="cc-name" className={cls("name")} value={v.name} onChange={(e) => set("name", e.target.value)} />
+            <Field label="Campaign Name" htmlFor="cc-name" error={errors.name} hint="A short name managers will recognise on the dashboard and in reports.">
+              <input id="cc-name" className={cls("name")} value={v.name} placeholder="What this campaign is called" onChange={(e) => set("name", e.target.value)} />
             </Field>
-            <Field label="Description" htmlFor="cc-desc" error={errors.description}>
-              <textarea id="cc-desc" className={cls("description")} rows={2} value={v.description} onChange={(e) => set("description", e.target.value)} />
+            <Field label="Description" htmlFor="cc-desc" error={errors.description} hint="What this campaign is for, in a sentence or two. Shown on the campaign page.">
+              <textarea id="cc-desc" className={cls("description")} rows={2} value={v.description} placeholder="Explain the purpose of the campaign" onChange={(e) => set("description", e.target.value)} />
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <Field label="Owner" htmlFor="cc-owner" error={errors.owner}>
+              <Field label="Owner" htmlFor="cc-owner" error={errors.owner} hint="The person responsible for this campaign. Defaults to you.">
                 <input id="cc-owner" className={cls("owner")} value={v.owner} onChange={(e) => set("owner", e.target.value)} />
               </Field>
-              <Field label="Campaign Objective" htmlFor="cc-objective" error={errors.objective}>
-                <input id="cc-objective" className={cls("objective")} value={v.objective} onChange={(e) => set("objective", e.target.value)} />
+              <Field label="Campaign Objective" htmlFor="cc-objective" error={errors.objective} hint="The one outcome the SDR drives every prospect toward. Every message is aimed at it.">
+                <input id="cc-objective" className={cls("objective")} value={v.objective} placeholder="State the single outcome you want" onChange={(e) => set("objective", e.target.value)} />
               </Field>
             </div>
+            <Field label="What We Offer" htmlFor="cc-offer" error={errors.offer} hint="What the SDR is offering these people, in plain words: the product, service or opportunity and why they would care. Agents may only make claims about it that appear here or in the knowledge sources.">
+              <textarea id="cc-offer" className={cls("offer")} rows={3} value={v.offer} placeholder="Describe what you are offering and what is in it for the person" onChange={(e) => set("offer", e.target.value)} />
+            </Field>
+            {!editId && (
+              <Field label="Campaign Brief (the initial prompt)" htmlFor="cc-brief" hint="The standing instructions every agent in this campaign receives first: who the SDR is, how it should sound, what to avoid. Leave it empty to start from a sensible default. You can change it later and every change is kept as a version you can compare and roll back.">
+                <textarea id="cc-brief" className="input" rows={4} value={v.brief || ""} placeholder="Write the standing instructions for the SDR, or leave empty for the default" onChange={(e) => set("brief", e.target.value)} />
+              </Field>
+            )}
           </div>
         </div>
 
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Targeting &amp; ICP</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field label="ICP / Target Audience" htmlFor="cc-icp" error={errors.icpText}>
-              <textarea id="cc-icp" className={cls("icpText")} rows={2} value={v.icpText} onChange={(e) => set("icpText", e.target.value)} />
+            <Field label="ICP / Target Audience" htmlFor="cc-icp" error={errors.icpText} hint="Who the ideal person is, in plain words: their role, the kind of organisation, its size and region, and any signal that makes them a good fit. The ICP agent judges every prospect against this.">
+              <textarea id="cc-icp" className={cls("icpText")} rows={3} value={v.icpText} placeholder="Describe the ideal person and organisation" onChange={(e) => set("icpText", e.target.value)} />
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <Field label="Geography" error={errors.geography}>
+              <Field label="Geography" error={errors.geography} hint="Where the people are. Add your own with + Add.">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {v.geographyOptions.map((g) => (
                     <button key={g} type="button" aria-pressed={v.geography.includes(g)} className={`chip ${v.geography.includes(g) ? "selected" : ""}`} onClick={() => toggleIn("geography", g)}>
@@ -215,7 +223,7 @@ export default function CreateCampaign({ params = {} }) {
                   <AddChip onAdd={(label) => addOption("geographyOptions", "geography", label)} />
                 </div>
               </Field>
-              <Field label="Target Personas / Roles" error={errors.personas}>
+              <Field label="Target Personas / Roles" error={errors.personas} hint="The roles or titles you want to reach. Add your own with + Add.">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {v.personaOptions.map((g) => (
                     <button key={g} type="button" aria-pressed={v.personas.includes(g)} className={`chip ${v.personas.includes(g) ? "selected" : ""}`} onClick={() => toggleIn("personas", g)}>
@@ -226,11 +234,11 @@ export default function CreateCampaign({ params = {} }) {
                 </div>
               </Field>
             </div>
-            <Field label="Company Criteria" htmlFor="cc-company">
-              <input id="cc-company" className="input" value={v.companyCriteria} onChange={(e) => set("companyCriteria", e.target.value)} />
+            <Field label="Organisation Criteria" htmlFor="cc-company" hint="Facts about the organisation that must be true: its size, type or stage.">
+              <input id="cc-company" className="input" placeholder="What must be true about the organisation" value={v.companyCriteria} onChange={(e) => set("companyCriteria", e.target.value)} />
             </Field>
-            <Field label="Exclusion Criteria" htmlFor="cc-excl">
-              <input id="cc-excl" className="input" value={v.exclusionCriteria} onChange={(e) => set("exclusionCriteria", e.target.value)} />
+            <Field label="Exclusion Criteria" htmlFor="cc-excl" hint="People or organisations to always skip. Anyone matching is rejected on sight.">
+              <input id="cc-excl" className="input" placeholder="Who must never be contacted" value={v.exclusionCriteria} onChange={(e) => set("exclusionCriteria", e.target.value)} />
             </Field>
           </div>
         </div>
@@ -238,7 +246,7 @@ export default function CreateCampaign({ params = {} }) {
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Channels &amp; Limits</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field label="Channels" error={errors.channels}>
+            <Field label="Channels" error={errors.channels} hint="Where the SDR may reach people. A channel that is turned off is never used.">
               <div style={{ display: "flex", gap: 8 }}>
                 {CHANNEL_KEYS.map((k) => (
                   <button key={k} type="button" aria-pressed={v.channels.includes(k)} className={`chip ${v.channels.includes(k) ? "selected" : ""}`} onClick={() => toggleIn("channels", k)}>
@@ -248,15 +256,15 @@ export default function CreateCampaign({ params = {} }) {
                 ))}
               </div>
             </Field>
-            <Field label="Qualification Criteria (prompt)" htmlFor="cc-qual" error={errors.qualificationPrompt}>
-              <textarea id="cc-qual" className={cls("qualificationPrompt")} rows={2} value={v.qualificationPrompt} onChange={(e) => set("qualificationPrompt", e.target.value)} />
+            <Field label="Qualification Criteria (prompt)" htmlFor="cc-qual" error={errors.qualificationPrompt} hint="The rule the ICP agent uses to score fit and decide who qualifies, including the score needed. This is the most important prompt for deciding who gets contacted.">
+              <textarea id="cc-qual" className={cls("qualificationPrompt")} rows={3} placeholder="State what makes someone qualify and the score needed" value={v.qualificationPrompt} onChange={(e) => set("qualificationPrompt", e.target.value)} />
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <Field label="Daily Outreach Limit" htmlFor="cc-limit" error={errors.dailyLimit} hint="contacts per day">
+              <Field label="Daily Outreach Limit" htmlFor="cc-limit" error={errors.dailyLimit} hint="The most touches this campaign sends in one (simulated) day.">
                 <input id="cc-limit" type="number" min="1" max="1000" className={cls("dailyLimit")} value={v.dailyLimit} onChange={(e) => set("dailyLimit", e.target.value)} />
               </Field>
-              <Field label="Working Hours" htmlFor="cc-hours" error={errors.workingHours}>
-                <input id="cc-hours" className={cls("workingHours")} value={v.workingHours} onChange={(e) => set("workingHours", e.target.value)} />
+              <Field label="Working Hours" htmlFor="cc-hours" error={errors.workingHours} hint="When the SDR may send, as a start and an end time.">
+                <input id="cc-hours" className={cls("workingHours")} placeholder="Start and end time" value={v.workingHours} onChange={(e) => set("workingHours", e.target.value)} />
               </Field>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

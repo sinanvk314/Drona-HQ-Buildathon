@@ -13,6 +13,7 @@ import Settings from "./screens/Settings.jsx";
 import Reps from "./screens/Reps.jsx";
 import Compare from "./screens/Compare.jsx";
 import Login from "./screens/Login.jsx";
+import ErrorBoundary from "./components/ui/ErrorBoundary.jsx";
 import { useSession } from "./hooks/useSession.js";
 
 const SCREENS = {
@@ -65,7 +66,9 @@ export default function App() {
   return (
     <ToastProvider>
       <NavContext.Provider value={value}>
-        <Screen key={`${route.name}:${JSON.stringify(route.params)}`} routeName={route.name} params={route.params} />
+        <ErrorBoundary key={`${route.name}:${JSON.stringify(route.params)}`}>
+          <Screen routeName={route.name} params={route.params} />
+        </ErrorBoundary>
       </NavContext.Provider>
     </ToastProvider>
   );

@@ -179,6 +179,8 @@ export const personAndCompany = (p) => ({
 export const campaignBlock = (c) => ({
   id: c.id,
   name: c.name,
+  objective: c.objective,
+  offer: c.offer,
   icp: c.icpText,
   company_criteria: c.companyCriteria,
   exclusion_criteria: c.exclusionCriteria,

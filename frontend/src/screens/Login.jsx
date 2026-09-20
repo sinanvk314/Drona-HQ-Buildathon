@@ -32,10 +32,10 @@ export default function Login() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 24 }}>
       <form onSubmit={submit} className="card" style={{ width: 380, maxWidth: "100%", padding: 28, display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>N</div>
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>A</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>NimbusGuard SDR</div>
-            <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>Autonomous SDR control plane</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Autonomous SDR</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>Control plane</div>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ export function validateCampaign(v, launch) {
   if (!v.description || !v.description.trim()) e.description = "Add a short description.";
   if (!v.owner || !v.owner.trim()) e.owner = "Enter an owner.";
   if (!v.objective || !v.objective.trim()) e.objective = "Enter the campaign objective.";
+  if (!v.offer || !v.offer.trim()) e.offer = "Describe what this campaign offers.";
   if (!v.icpText || !v.icpText.trim()) e.icpText = "Describe the target audience.";
   if (!v.geography || !v.geography.length) e.geography = "Select at least one geography.";
   if (!v.personas || !v.personas.length) e.personas = "Select at least one persona.";

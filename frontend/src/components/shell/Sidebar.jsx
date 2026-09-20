@@ -39,9 +39,9 @@ export default function Sidebar({ active }) {
             alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14,
           }}
         >
-          N
+          A
         </div>
-        <div style={{ fontWeight: 700, fontSize: 14.5 }}>NimbusGuard SDR</div>
+        <div style={{ fontWeight: 700, fontSize: 14.5 }}>Autonomous SDR</div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 12px" }}>
