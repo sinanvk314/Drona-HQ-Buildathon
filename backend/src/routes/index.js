@@ -61,6 +61,10 @@ router.get("/performance", asyncRoute(async (req, res) => res.json(getPerformanc
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
 
 // ---- Dev tab: sandbox with a real person as the prospect, search playground, real-data tests, runtime ------------
+router.get("/dev/email", asyncRoute(async (req, res) => res.json(dev.getEmailStatus())));
+router.post("/dev/email/connection", asyncRoute(async (req, res) => res.json(await dev.testEmailConnection())));
+router.post("/dev/email/test", asyncRoute(async (req, res) => res.json(await dev.sendTestEmail(req.body || {}))));
+router.post("/dev/email/check", asyncRoute(async (req, res) => res.json(await dev.checkInboxNow())));
 router.get("/dev/runtime", asyncRoute(async (req, res) => res.json(dev.getRuntime())));
 router.get("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.listSandboxes())));
 router.post("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.createSandbox(req.body || {}))));

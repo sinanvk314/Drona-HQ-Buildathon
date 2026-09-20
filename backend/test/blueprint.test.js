@@ -70,7 +70,7 @@ test("pausing an agent in a campaign shows in the blueprint, and the persona cha
   data.setCampaignPersona("c_us_saas", { tone: "warm and brief, peer to peer", signOff: "The SDR team" });
   const agent = getState().agents.find((a) => a.id === "personalisation");
   const prompt = composePrompt(agent, getState().campaigns.find((c) => c.id === "c_us_saas")).text;
-  assert.match(prompt, /Voice: write warm and brief, peer to peer; sign off as "The SDR team"\./);
+  assert.match(prompt, /Voice: write warm and brief, peer to peer; the sign-off "The SDR team" is added automatically, so do not write one./);
   assert.doesNotMatch(composePrompt(agent, getState().campaigns.find((c) => c.id === "c_ai_founders")).text, /Voice:/);
   assert.match(data.getCampaign("c_us_saas").prompts.log[0].text, /Persona: warm and brief/, "a persona change is in the campaign's prompt history");
 });

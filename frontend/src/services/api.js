@@ -166,3 +166,9 @@ export const testKnowledge = ({ campaignId, query }) => post("/knowledge/test", 
 export const getContacts = () => get("/contacts");
 export const addContact = (values) => post("/contacts", values);
 export const removeContact = (id) => del(`/contacts/${id}`);
+
+// ---------------------------------------------------------------- real email diagnostics
+export const getEmailStatus = () => get("/dev/email");
+export const testEmailConnection = () => post("/dev/email/connection");
+export const sendTestEmail = (to) => post("/dev/email/test", { to });
+export const checkInboxNow = () => post("/dev/email/check");

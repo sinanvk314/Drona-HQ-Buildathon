@@ -304,7 +304,7 @@ export default function CreateCampaign({ params = {} }) {
                 <Field label={v.audienceKind === "individuals" ? "Organisation or what they are known for (optional)" : "Organisation"} htmlFor="cc-torg" error={errors.targetOrganisation} hint="Where they work or study, or what they are known for.">
                   <input id="cc-torg" className={cls("targetOrganisation")} value={target.organisation} placeholder="Company, college, club..." onChange={(e) => setTarget("organisation", e.target.value)} />
                 </Field>
-                <Field label={dataReal ? "Email (or a phone number)" : "Email"} htmlFor="cc-temail" error={errors.targetEmail} hint={dataReal ? "A real address: the SDR will send to it, and the invite goes here." : "Optional. Used for the calendar invite once a meeting is booked."}>
+                <Field label={dataReal ? "Email (or a phone number)" : "Email"} htmlFor="cc-temail" error={errors.targetEmail} hint={dataReal ? "A real address: the SDR will send to it, and the invite goes here." : (target.email && !/\.example$/i.test(target.email) ? "This looks like a real address, but the data is set to Simulated: nothing will be emailed and replies will be made up. Choose Real above to email them." : "Optional. Used for the calendar invite once a meeting is booked.")}>
                   <input id="cc-temail" className={cls("targetEmail")} value={target.email} placeholder="Their email address" onChange={(e) => setTarget("email", e.target.value)} />
                 </Field>
               </div>

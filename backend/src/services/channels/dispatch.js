@@ -10,9 +10,14 @@ import { sendEmail } from "./gmail.js";
 import { sendSms } from "./twilio.js";
 import { startCall } from "./voice.js";
 
-const FOOTER = (who) => `\n\n--\n${who || "The team"}\nIf you would rather not hear from us, just reply "unsubscribe" and we will not contact you again.`;
+// A proper close: a sign-off and the sender's name (the campaign's own sign-off if it has one), then the opt-out line.
+const SIGNATURE = (campaign, rep) => {
+  const name = (campaign.persona && campaign.persona.signOff) || (rep && rep.name) || "The team";
+  return `\n\nBest regards,\n${name}\n\n--\nIf you would rather not hear from us, just reply "unsubscribe" and we will not contact you again.`;
+};
 
 function finish(state, campaign, prospect, entries, result) {
+  result.ts = result.ts || Date.now();
   for (const e of entries) e.delivery = result;
   if (result.status === "failed") {
     prospect.nextStep = `Not delivered: ${result.error}`;
@@ -33,6 +38,7 @@ export function dispatch(state, campaign, prospect, msg, entries) {
     finish(state, campaign, prospect, entries, { status: "failed", error: blocked });
     return;
   }
+  prospect.sending = true; // the inbox reader leaves this person alone until the send has finished
   (async () => {
     try {
       if (channel === "email") {
@@ -41,12 +47,12 @@ export function dispatch(state, campaign, prospect, msg, entries) {
         const m = prospect.meeting;
         if (m && m.status === "confirmed" && m.ics && !m.inviteSent) {
           attachments.push({ name: "meeting.ics", type: "text/calendar; method=REQUEST", content: m.ics });
-          m.inviteSent = true;
         }
         const r = await sendEmail({
-          to: prospect.email, fromName: msg.rep && msg.rep.name, subject: msg.subject || `Re: ${first}`, body: msg.body + FOOTER(msg.rep && msg.rep.name),
+          to: prospect.email, fromName: msg.rep && msg.rep.name, subject: msg.subject || `Re: ${first}`, body: msg.body.replace(/\s+$/, "") + SIGNATURE(campaign, msg.rep),
           threadId: prospect.emailThread || undefined, inReplyTo: prospect.lastMessageId || undefined, attachments,
         });
+        if (attachments.length) prospect.meeting.inviteSent = true; // only once it has really gone
         prospect.emailThread = prospect.emailThread || r.threadId;
         prospect.seenMessageIds = [...(prospect.seenMessageIds || []), r.id];
         finish(state, campaign, prospect, entries, { status: "sent", provider: "gmail", id: r.id, ts: Date.now() });
@@ -63,6 +69,7 @@ export function dispatch(state, campaign, prospect, msg, entries) {
     } catch (e) {
       finish(state, campaign, prospect, entries, { status: "failed", error: e.message });
     }
+    prospect.sending = false;
     try { await persistState(); } catch { /* the next tick saves it */ }
   })();
 }

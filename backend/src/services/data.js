@@ -18,11 +18,12 @@ import { newProspect } from "./prospects.js";
 import { addFact } from "./dossier.js";
 import { recordReply, recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
-import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
+import { campaignsNeedingReps, pickRep, repTouchesToday } from "./reps.js";
 import { parseWorkingHours, simClockLabel, withinWorkingHours } from "./simTime.js";
 import { config, isDronahqMode, isGeminiMode } from "../config.js";
 import { embeddingsStatus } from "./embeddings.js";
 import { normalisePhone } from "./contacts.js";
+import { dispatch } from "./channels/dispatch.js";
 import { channelBlocker, gmailReady, isRealCampaign, realChannels, recipientBlocker, smsReady, voiceReady } from "./realMode.js";
 import { currentUser } from "./auth.js";
 import { activeSystemPrompt, activeVersionOf, initCampaignPrompts, logPromptChange, pinnedVersion } from "./prompts.js";
@@ -356,6 +357,11 @@ export function getLaunchReview(id) {
   if (!on.length) add("channels", "Channels", "block", `None of this campaign's channels (${c.channels.join(", ") || "none selected"}) is enabled, so nothing can be sent.`);
   else if (off.length) add("channels", "Channels", "warn", `${on.join(", ")} enabled. ${off.join(", ")} is paused platform-wide and will be skipped.`);
   else add("channels", "Channels", "ok", `${on.join(", ")} enabled.`);
+
+  // A real address typed into a simulated campaign is the easy mistake: nothing is sent and the replies are invented.
+  if (c.sourcing !== "real" && c.mode === "single" && c.target && c.target.email && !/\.example$/i.test(c.target.email)) {
+    add("simulated-real", "Real address, simulated data", "warn", `${c.target.email} looks like a real address, but this campaign is set to Simulated data: nothing will be emailed, and any replies will be made up. Create the campaign again with Real data to email them for real.`);
+  }
 
   // Real data and real sending
   if (c.sourcing === "real") {
@@ -771,8 +777,14 @@ export function decideApproval(id, { action, reason = "" } = {}) {
         } else {
           const o = OUTCOMES[a.type];
           // The approved (possibly edited) draft is what actually goes out, so keep it in the conversation.
-          if (a.type === "followup" && a.draft && a.draft.body) {
-            p.conversation.push({ dir: "out", text: a.draft.body, when: "Today", channel: a.channel });
+          const outgoing = a.draft && a.draft.body && (a.type === "followup" || (isRealCampaign(c) && (a.type === "pricing" || a.type === "escalation")));
+          if (outgoing) {
+            const entry = { dir: "out", text: a.draft.body, when: "Today", channel: a.channel };
+            p.conversation.push(entry);
+            // For a real person this is where the approved reply actually goes out.
+            const rep = pickRep(s, c, a.channel || "email", { preferId: p.repId }) || pickRep(s, c, a.channel || "email", { preferId: p.repId, strict: false });
+            if (rep) { entry.sender = rep.name; p.repId = rep.id; }
+            dispatch(s, c, p, { channel: a.channel || "email", subject: "", body: a.draft.body, rep, kind: "reply" }, [entry]);
           }
           p.lastAction = o.last;
           p.nextStep = o.next;
@@ -1197,7 +1209,7 @@ export function inspectPrompt(campaignId, agentId, harness = "") {
   const systemVersion = (m && m[2] && c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === Number(m[2]))) || (c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === c.systemPrompt.active));
   const persona = c.persona;
   const voice = persona && (persona.tone || persona.signOff)
-    ? `Voice: ${[persona.tone && `write ${persona.tone}`, persona.signOff && `sign off as "${persona.signOff}"`].filter(Boolean).join("; ")}.` : "";
+    ? `Voice: ${[persona.tone && `write ${persona.tone}`, persona.signOff && `the sign-off "${persona.signOff}" is added automatically, so do not write one`].filter(Boolean).join("; ")}.` : "";
   const override = agent.overrides.find((o) => o.campaignId === c.id);
   return {
     agent: agent.title, agentId, campaign: c.name, exact: !!m && !!agent.versions.find((v) => v.version === (m && m[1])),

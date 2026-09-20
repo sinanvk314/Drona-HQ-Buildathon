@@ -37,6 +37,7 @@ before(async () => {
     req.on("end", () => {
       const json = (o, code = 200) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
       if (req.url === "/token") return json({ access_token: "tok", expires_in: 3600 });
+      if (req.url === "/gmail/users/me/profile") return json({ emailAddress: "sdr@gmail.example.com", messagesTotal: 10 });
       if (req.url === "/gmail/users/me/messages/send") { const b = JSON.parse(raw); gmail.sent.push(b); return json({ id: `m${gmail.sent.length}`, threadId: b.threadId || `t${gmail.sent.length}` }); }
       if (req.url.startsWith("/gmail/users/me/threads/")) return json({ messages: gmail.threadMessages });
       if (req.url.endsWith("/Messages.json")) { twilio.texts.push(Object.fromEntries(new URLSearchParams(raw))); return json({ sid: "SM1" }, 201); }
@@ -245,4 +246,132 @@ test("an audience of individuals (public figures) needs no organisation, and eve
   assert.throws(() => normalizeCandidates({ candidates: [{ name: "No Org", title: "x" }] }, { count: 3 }), /no usable candidates/);
   assert.match(sourceSystemFor({ audienceKind: "individuals" }), /well-known public figures/);
   assert.match(sourceSystemFor({ audienceKind: "organisations" }), /must be FICTIONAL/);
+});
+
+// ---------------------------------------------------------------- the email bugs found by using it
+const approveFirst = async (c) => {
+  await tickCampaign(c);
+  await tickCampaign(c);
+  const p = prospectOf(c);
+  const pending = getState().approvals.find((a) => a.prospectId === p.id && a.status === "pending");
+  data.decideApproval(pending.id, { action: "approve" });
+  await waitFor(() => p.touches[0] && p.touches[0].delivery && p.touches[0].delivery.status !== "sending");
+  return p;
+};
+const human = (id, text, from) => ({ id, internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: from }, { name: "Message-ID", value: `<${id}@mail>` }], mimeType: "text/plain", body: { data: encode(text) } } });
+
+test("an opening email reads like a professional email: greeting, reasons, the offer, one ask, and a signature added once", async () => {
+  const c = realCampaign({ name: `Pro ${Math.random()}`, target: { name: "Prof. Kavita Iyer", title: "Dean of Students", organisation: "NIT Trichy", email: "kavita@nitt.edu", notes: "Leads the student innovation council" } });
+  const p = await approveFirst(c);
+  const mime = decodeRaw(gmail.sent.at(-1).raw);
+  const body = Buffer.from(mime.split("\r\n\r\n")[1].replace(/\r\n/g, ""), "base64").toString("utf8");
+  assert.match(body, /^Hello Prof\. Iyer,/);
+  assert.ok(body.split(/\s+/).length >= 60, `long enough to be a real email (${body.split(/\s+/).length} words)`);
+  assert.match(body, /short conversation/);
+  assert.equal((body.match(/Best regards,/g) || []).length, 1, "one sign-off");
+  assert.match(body, /Best regards,\nJD/);
+  assert.match(mime, /List-Unsubscribe: <mailto:/);
+  assert.match(mime, /Subject: A note for Prof\. Iyer at NIT Trichy/);
+  assert.equal(p.touches[0].delivery.status, "sent");
+});
+
+test("BUG: a reply from the same Gmail account that sends (a test on yourself) is retrieved, not thrown away as our own message", async () => {
+  const me = "sdr@gmail.example.com";
+  const c = realCampaign({ name: `Self ${Math.random()}`, target: { name: "Test Myself", title: "Founder", organisation: "Me Inc", email: me, notes: "Testing the SDR" } });
+  const p = await approveFirst(c);
+  const ourId = p.seenMessageIds[0];
+  gmail.threadMessages = [
+    human(ourId, "our opening email", `JD <${me}>`),
+    human("mine1", "Yes, this looks interesting. Can we talk?\n\nOn Tue, 22 Sep 2026 at 09:15, JD <sdr@gmail.example.com>\nwrote:\n> our opening email", `Test Myself <${me}>`),
+  ];
+  await tickCampaign(c);
+  assert.equal(p.conversation.filter((m) => m.dir === "in").length, 1, "the reply was read");
+  assert.equal(p.conversation.find((m) => m.dir === "in").text, "Yes, this looks interesting. Can we talk?", "the quoted email and its wrapped 'On ... wrote:' line are cut");
+  await tickCampaign(c);
+  assert.equal(p.conversation.filter((m) => m.dir === "in").length, 1, "and only once");
+});
+
+test("a reply that is only HTML is still read", async () => {
+  const c = realCampaign({ name: `Html ${Math.random()}`, target: { name: "Html Person", title: "Lead", organisation: "Org", email: "html@org.in", notes: "n" } });
+  const p = await approveFirst(c);
+  gmail.threadMessages = [
+    human(p.seenMessageIds[0], "ours", "JD <sdr@gmail.example.com>"),
+    { id: "h1", internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "Html Person <html@org.in>" }], mimeType: "multipart/alternative", parts: [{ mimeType: "text/html", body: { data: encode("<div>Sounds <b>good</b>, please send times.</div><div class=\"gmail_quote\">quoted</div>") } }] } },
+  ];
+  await tickCampaign(c);
+  assert.match(p.conversation.find((m) => m.dir === "in").text, /^Sounds good, please send times\./);
+});
+
+test("a bounce marks the address as not working and stops; an out-of-office is noted and never answered", async () => {
+  const c = realCampaign({ name: `Bounce ${Math.random()}`, target: { name: "Bounce Person", title: "Lead", organisation: "Org", email: "nobody@org.in", notes: "n" } });
+  const p = await approveFirst(c);
+  gmail.threadMessages = [
+    human(p.seenMessageIds[0], "ours", "JD <sdr@gmail.example.com>"),
+    { id: "b1", internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>" }, { name: "Subject", value: "Delivery Status Notification (Failure)" }], mimeType: "text/plain", body: { data: encode("Address not found") } } },
+  ];
+  await tickCampaign(c);
+  assert.equal(p.stage, "rejected");
+  assert.match(p.nextStep, /bounced/i);
+  assert.equal(p.touches[0].delivery.status, "failed");
+  assert.equal(p.conversation.filter((m) => m.dir === "in").length, 0, "a bounce is not a reply");
+
+  const c2 = realCampaign({ name: `Ooo ${Math.random()}`, target: { name: "Away Person", title: "Lead", organisation: "Org", email: "away@org.in", notes: "n" } });
+  const p2 = await approveFirst(c2);
+  gmail.threadMessages = [
+    human(p2.seenMessageIds[0], "ours", "JD <sdr@gmail.example.com>"),
+    { id: "o1", internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "Away Person <away@org.in>" }, { name: "Subject", value: "Automatic reply: Away" }, { name: "Auto-Submitted", value: "auto-replied" }], mimeType: "text/plain", body: { data: encode("I am out of the office until Monday.") } } },
+  ];
+  const before = getState().approvals.filter((a) => a.prospectId === p2.id).length;
+  await tickCampaign(c2);
+  assert.equal(p2.conversation.filter((m) => m.dir === "in").length, 0);
+  assert.equal(getState().approvals.filter((a) => a.prospectId === p2.id).length, before, "nothing was drafted in answer");
+  assert.match(p2.nextStep, /out of office/i);
+});
+
+test("the email tools: connection check, a test email that respects the allow-list, and an immediate inbox check", async () => {
+  const dev = await import("../src/services/dev.js");
+  const conn = await dev.testEmailConnection();
+  assert.equal(conn.account, "sdr@gmail.example.com");
+  assert.equal(conn.match, true);
+  const sentBefore = gmail.sent.length;
+  config.realAllowlist = ["only@me.in"];
+  await assert.rejects(() => dev.sendTestEmail({ to: "other@x.com" }), /ALLOWLIST/);
+  await assert.rejects(() => dev.sendTestEmail({ to: "not an address" }), /real email address/);
+  const ok = await dev.sendTestEmail({ to: "only@me.in" });
+  assert.equal(ok.ok, true);
+  assert.equal(gmail.sent.length, sentBefore + 1);
+  config.realAllowlist = [];
+  const check = await dev.checkInboxNow();
+  assert.equal(typeof check.checked, "number");
+  const status = dev.getEmailStatus();
+  assert.ok(status.recent.length > 0 && status.recent[0].status);
+  assert.equal(status.ready, true);
+});
+
+test("BUG: approving a drafted reply to a real person actually sends it (it used to be recorded but never emailed)", async () => {
+  const c = realCampaign({ name: `Reply ${Math.random()}`, target: { name: "Reply Person", title: "Lead", organisation: "Org", email: "reply@org.in", notes: "Runs a club" } });
+  const p = await approveFirst(c);
+  gmail.threadMessages = [
+    human(p.seenMessageIds[0], "ours", "JD <sdr@gmail.example.com>"),
+    human("q1", "Interesting. Can you tell me more about what the workshop covers?", "Reply Person <reply@org.in>"),
+  ];
+  await tickCampaign(c);
+  const pending = getState().approvals.find((a) => a.prospectId === p.id && a.status === "pending");
+  assert.ok(pending, "the drafted answer waits for a human");
+  const sentBefore = gmail.sent.length;
+  data.decideApproval(pending.id, { action: "approve" });
+  await waitFor(() => gmail.sent.length > sentBefore);
+  const reply = p.conversation.filter((m) => m.dir === "out").at(-1);
+  await waitFor(() => reply.delivery && reply.delivery.status !== "sending");
+  assert.equal(reply.delivery.status, "sent");
+  assert.equal(gmail.sent.at(-1).threadId, p.emailThread, "in the same thread as the conversation");
+});
+
+test("typing a real address into a simulated campaign is flagged at launch, because nothing would be sent", () => {
+  const { id } = data.createCampaign(
+    { name: `Simulated with real address ${Math.random()}`, description: "d", owner: "t", objective: "Book a call", offer: "A workshop.", mode: "single", sourcing: "simulated-search", target: { name: "Real Address", organisation: "Org", email: "someone@org.in" }, channels: ["email"], dailyLimit: 10, workingHours: "9:00 AM – 6:00 PM", approvals: {}, sources: [] },
+    { launch: false }
+  );
+  const review = data.getLaunchReview(id);
+  assert.ok(review.checks.some((x) => x.key === "simulated-real" && x.status === "warn"));
 });

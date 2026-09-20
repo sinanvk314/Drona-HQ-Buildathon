@@ -95,6 +95,7 @@ export function greetingName(name) {
 /** Personalisation & Outreach Strategy Agent: pick a channel and draft an opening message. */
 export function ruleDraftOutreach({ campaign, prospect, knowledge, override, channel: planned }) {
   const channel = planned || (campaign.channels || [])[0] || "email";
+  const first = greetingName(prospect.name);
   const hook = prospect.dossier && prospect.dossier.hooks && prospect.dossier.hooks[0];
   const fact =
     hook ||
@@ -102,13 +103,25 @@ export function ruleDraftOutreach({ campaign, prospect, knowledge, override, cha
     (prospect.tech && prospect.tech.length ? `your use of ${prospect.tech[0]}` : `${prospect.company}'s recent growth`);
   const productLine = knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : offerLine(campaign);
   const tone = override ? ` (${override})` : "";
-  const body = `Hi ${greetingName(prospect.name)} — ${hook ? `I came across this about you: ${fact.replace(/[.!?]+$/, "")}.` : `noticed ${fact.toLowerCase()}.`} ${productLine} Worth a quick look?`;
-  return {
-    channel,
-    subject: `A note for ${greetingName(prospect.name)} at ${prospect.company}`,
-    body,
-    reasoning: `Chose ${channel} as the lead channel for this campaign and referenced a real signal from the research record${tone}.`,
-  };
+  const subject = `A note for ${first}${prospect.company && prospect.company !== "Independent" ? ` at ${prospect.company}` : ""}`;
+  const reasoning = `Chose ${channel} as the lead channel for this campaign and referenced a real signal from the research record${tone}.`;
+
+  if (channel !== "email") {
+    const body = `Hi ${first}, ${hook ? `I came across this about you: ${fact.replace(/[.!?]+$/, "")}.` : `noticed ${fact.toLowerCase()}.`} ${productLine} Worth a quick look?`;
+    return { channel, subject, body, reasoning };
+  }
+  // A proper email: greeting, why them, what is offered, one low-pressure ask. The signature is added when it is sent.
+  const offer = campaign.offer ? campaign.offer.trim() : productLine;
+  const why = hook
+    ? `I am writing to you because of your work: ${fact.replace(/[.!?]+$/, "")}. It made me think of something that could be relevant to you.`
+    : `I am writing to you because ${fact.replace(/[.!?]+$/, "")} suggested this could be relevant to you.`;
+  const body = [
+    `Hello ${first},`,
+    why,
+    `${offer}${/[.!?]$/.test(offer) ? "" : "."} I thought it worth putting in front of you directly rather than sending something generic.`,
+    "Would you be open to a short conversation to see whether this could be useful? If so, just reply and I will suggest a few times that suit you.",
+  ].join("\n\n");
+  return { channel, subject, body, reasoning };
 }
 
 const firstSentence = (knowledge, fallback) => (knowledge && knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : fallback);
@@ -127,20 +140,32 @@ export function ruleHandleConversation({ campaign, prospect, knowledge }) {
     return {
       action: "escalate",
       reasoning: "Prospect raised a security/compliance question; campaign policy requires human escalation on any such objection.",
-      draft: `Hi ${first}, thanks for asking. That is a question our security lead should answer properly, so I am passing it to them and they will follow up shortly.`,
+      draft: `Hello ${first},
+
+Thank you for asking. That is a question our security lead should answer properly rather than me giving you a partial answer, so I am passing it to them now.
+
+They will follow up with you shortly.`,
     };
   }
   if (meetingIntent) {
     return {
       action: "meeting",
       reasoning: "Prospect signalled intent to schedule a call; proposing a meeting time.",
-      draft: `Hi ${first}, glad this is relevant. I will arrange a short call and send over a few times that work.`,
+      draft: `Hello ${first},
+
+Thank you for your reply, and I am glad this is relevant to you. I would be happy to arrange a short conversation.
+
+I have picked a few times below that could suit you.`,
     };
   }
   return {
     action: "followup",
     reasoning: "No clear objection or meeting intent yet; sending a contextual follow-up.",
-    draft: `Hi ${first}, thanks for getting back to me. ${firstSentence(knowledge, offerLine(campaign))} Happy to go into more detail on a short call.`,
+    draft: `Hello ${first},
+
+Thank you for getting back to me. ${firstSentence(knowledge, offerLine(campaign))}
+
+I would be glad to go into more detail on a short call, whenever suits you.`,
   };
 }
 
@@ -172,7 +197,12 @@ export function ruleStrategy({ campaign, prospect, allowedChannels, maxTouches, 
 export function ruleFollowUp({ campaign, prospect, knowledge, channel, touchNumber, isLast }) {
   const first = greetingName(prospect.name);
   const fact = firstSentence(knowledge, offerLine(campaign));
-  const body = isLast
+  const email = channel === "email";
+  const body = email
+    ? isLast
+      ? `Hello ${first},\n\nThis is my last note, so I will not keep writing. ${fact}\n\nIf it is ever useful, I would be glad to share more, and you are welcome to reply at any time.`
+      : `Hello ${first},\n\nI wanted to follow up on my earlier note with one more thought. ${fact}\n\nIf this is relevant, I would be glad to set up a short conversation at a time that suits you. If not, no problem at all.`
+    : isLast
     ? `Hi ${first}, this is my last note. ${fact} If it is ever useful, I am glad to share more.`
     : `Hi ${first}, one more thought. ${fact} Worth a short look?`;
   return {

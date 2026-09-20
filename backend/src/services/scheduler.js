@@ -770,24 +770,51 @@ async function runConversation(s, campaign) {
 // Real email replies: for real campaigns, look in each contacted person's Gmail thread for new messages from them and handle each
 // one exactly as a typed reply. Runs at most every GMAIL_POLL_MS.
 const lastInbox = new Map();
-async function pollInbox(s, campaign) {
-  if (!isRealCampaign(campaign) || !gmailReady() || channelBlocker("email")) return;
-  if (Date.now() - (lastInbox.get(campaign.id) || 0) < config.gmail.pollMs) return;
+
+/**
+ * Reads the Gmail thread of every real person we have written to. `force` ignores the polling interval (the "Check inbox now"
+ * button). What it found is kept on the campaign (`inbox`) so a person can see that the inbox is really being read.
+ */
+export async function pollInbox(s, campaign, { force = false } = {}) {
+  if (!isRealCampaign(campaign) || !gmailReady() || channelBlocker("email")) return { checked: 0, replies: 0, errors: [] };
+  if (!force && Date.now() - (lastInbox.get(campaign.id) || 0) < config.gmail.pollMs) return { checked: 0, replies: 0, errors: [] };
   lastInbox.set(campaign.id, Date.now());
-  for (const prospect of s.prospects.filter((p) => p.campaignId === campaign.id && p.emailThread && p.stage !== "rejected")) {
-    let replies = [];
+  const status = { checked: 0, replies: 0, autoReplies: 0, bounces: 0, errors: [] };
+  for (const prospect of s.prospects.filter((p) => p.campaignId === campaign.id && p.emailThread && p.stage !== "rejected" && !p.sending)) {
+    status.checked += 1;
+    let messages = [];
     try {
-      replies = await newReplies({ threadId: prospect.emailThread, seen: prospect.seenMessageIds || [] });
+      messages = await newReplies({ threadId: prospect.emailThread, seen: prospect.seenMessageIds || [] });
     } catch (e) {
+      status.errors.push(`${prospect.name}: ${e.message}`);
       recordFailure(s, campaign, prospect, "inbox", e);
       continue;
     }
-    for (const r of replies) {
+    for (const r of messages) {
       prospect.seenMessageIds = [...(prospect.seenMessageIds || []), r.id];
-      prospect.lastMessageId = r.messageId || prospect.lastMessageId;
-      await processReply(s, campaign, prospect, { text: r.text.slice(0, 2000), channel: "email", kind: "real email reply" });
+      if (r.kind === "bounce") {
+        // The address does not work. Nothing more is sent to it, and the failure is plain to see.
+        status.bounces += 1;
+        prospect.stage = "rejected";
+        prospect.nextTouchTs = null;
+        prospect.nextStep = "Email bounced: the address does not work";
+        for (const t of prospect.touches) if (t.delivery && t.delivery.status === "sent") t.delivery = { ...t.delivery, status: "failed", error: "Bounced: the address does not work" };
+        addEvent(s, { campaignId: campaign.id, type: "escalate", text: `An email to **${prospect.name}** **bounced**: the address ${prospect.email} does not work`, featured: true });
+      } else if (r.kind === "auto") {
+        // An out-of-office or other automatic answer is not the person replying: it is noted and never answered.
+        status.autoReplies += 1;
+        prospect.history.push({ kind: "email", text: "Automatic reply received (out of office)", when: "Today" });
+        prospect.nextStep = "Out of office: follow up later";
+        addNote(prospect, { agent: "Reply Router", harness: "headers", engine: "rules", note: `An automatic reply arrived ("${r.text.slice(0, 100)}"). It was not answered.` });
+      } else {
+        status.replies += 1;
+        prospect.lastMessageId = r.messageId || prospect.lastMessageId;
+        await processReply(s, campaign, prospect, { text: r.text.slice(0, 2000), channel: "email", kind: "real email reply" });
+      }
     }
   }
+  campaign.inbox = { ...status, ts: Date.now() };
+  return status;
 }
 
 /**

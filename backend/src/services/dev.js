@@ -250,3 +250,64 @@ export function getRuntime() {
     signInRequired: !!config.auth.accessCode,
   };
 }
+
+// ---------------------------------------------------------------- real email: is it working, and what happened to each message
+import { pollInbox } from "./scheduler.js";
+import { profile, sendEmail } from "./channels/gmail.js";
+import { channelBlocker, gmailReady, isRealCampaign, recipientBlocker } from "./realMode.js";
+
+export function getEmailStatus() {
+  const s = getState();
+  const real = s.campaigns.filter(isRealCampaign);
+  const recent = [];
+  for (const p of s.prospects) {
+    const c = real.find((x) => x.id === p.campaignId);
+    if (!c) continue;
+    for (const m of p.conversation) {
+      if (m.dir !== "out" || !m.delivery) continue;
+      recent.push({ prospect: p.name, prospectId: p.id, to: m.channel === "email" ? p.email : p.phone, channel: m.channel, campaign: c.name, status: m.delivery.status, error: m.delivery.error || null, provider: m.delivery.provider || null, ts: m.delivery.ts || 0, preview: String(m.text || "").slice(0, 120) });
+    }
+  }
+  return {
+    ready: !channelBlocker("email"), credentials: gmailReady(), realSending: config.realSending, sender: config.gmail.sender || null,
+    allowlist: config.realAllowlist, autoSend: config.realAutoSend, pollSeconds: Math.round(config.gmail.pollMs / 1000),
+    blocker: channelBlocker("email"),
+    inboxes: real.map((c) => ({ campaign: c.name, status: c.status, inbox: c.inbox || null })),
+    recent: recent.sort((a, b) => b.ts - a.ts).slice(0, 15),
+  };
+}
+
+/** Signs in to Gmail with the stored credentials and says which mailbox they belong to. */
+export async function testEmailConnection() {
+  if (!gmailReady()) throw new Error("Gmail is not set up: one of GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN or GMAIL_SENDER is missing.");
+  const p = await profile();
+  const sender = config.gmail.sender.toLowerCase();
+  return { ok: true, account: p.address, sender: config.gmail.sender, match: p.address.toLowerCase() === sender, note: p.address.toLowerCase() === sender ? "The credentials work and match GMAIL_SENDER." : `The credentials sign in as ${p.address}, but GMAIL_SENDER is ${config.gmail.sender}. Mail will show ${p.address} as the sender: set GMAIL_SENDER to match.` };
+}
+
+/** One real email, right now, to an address on the allow-list: the quickest way to see whether sending works. */
+export async function sendTestEmail({ to } = {}) {
+  const address = String(to || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(address)) throw new Error("Enter a real email address.");
+  const why = channelBlocker("email") || recipientBlocker("email", { email: address });
+  if (why) throw new Error(why);
+  const r = await sendEmail({
+    to: address, fromName: "Autonomous SDR", subject: "Test email from your SDR",
+    body: "Hello,\n\nThis is a test email from your Autonomous SDR. If you can read it, real sending works: Gmail accepted the message and it reached your inbox.\n\nYou can delete it.\n\nBest regards,\nAutonomous SDR",
+  });
+  return { ok: true, to: address, id: r.id, threadId: r.threadId, note: "Gmail accepted it. Check that inbox (and its spam folder) within a minute." };
+}
+
+/** Reads every real campaign's Gmail threads now, instead of waiting for the next check. */
+export async function checkInboxNow() {
+  const s = getState();
+  const out = { checked: 0, replies: 0, autoReplies: 0, bounces: 0, errors: [] };
+  if (channelBlocker("email")) throw new Error(channelBlocker("email"));
+  for (const c of s.campaigns.filter((x) => isRealCampaign(x) && (x.status === "live" || x.status === "paused"))) {
+    const r = await pollInbox(s, c, { force: true });
+    for (const k of ["checked", "replies", "autoReplies", "bounces"]) out[k] += r[k] || 0;
+    out.errors.push(...(r.errors || []));
+  }
+  await persistState();
+  return out;
+}
