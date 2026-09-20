@@ -8,6 +8,7 @@ import path from "path";
 process.env.DATA_FILE = path.join(os.tmpdir(), `scheduler-test-${process.pid}.json`);
 process.env.USAGE_FILE = path.join(os.tmpdir(), `usage-scheduler-${process.pid}.json`);
 process.env.AGENT_ENGINE = "rule";
+process.env.SIM_MS_PER_HOUR = "3600000"; // real-time days: a simulated day is 72s by default, which made day-boundary tests flaky
 process.env.EMBEDDINGS = "off";
 delete process.env.DATABASE_URL;
 const { config } = await import("../src/config.js");
@@ -84,7 +85,7 @@ test("a rejected follow-up stops the sequence", async () => {
 });
 
 test("a sequence that has run its course is closed out with a recorded reason", async () => {
-  const p = silentProspect("c_ai_founders", { sequence: ["email", "sms", "email"], touches: 3, dueNow: false, lastAgoMs: 60 * 60 * 1000 });
+  const p = silentProspect("c_ai_founders", { sequence: ["email", "sms", "email"], touches: 3, dueNow: false, lastAgoMs: 100 * 60 * 60 * 1000 });
   await tick();
   assert.equal(p.closedOut, true);
   assert.match(p.nextStep, /no reply after 3 touches/);
@@ -153,4 +154,39 @@ test("pausing one agent in one campaign stops only that agent there, and the oth
   data.setCampaignAgentEnabled("c_ai_founders", "followup", true);
   await tick();
   assert.equal(founders.touches.length, 2, "and it resumes when turned back on");
+});
+
+test("a stage that fails is contained, counted and journalled, and other campaigns still progress", async () => {
+  const bad = silentProspect("c_ai_founders", { sequence: ["email", "sms", "email"] });
+  bad.plan.waitHours = 0; // makes the close-out check fall back to campaign.cadence...
+  const founders = campaign("c_ai_founders");
+  const savedCadence = founders.cadence;
+  founders.cadence = null; // ...which is now missing, so the Follow-up stage throws for this campaign
+  const good = silentProspect("c_india_bfsi", { sequence: ["email", "email", "email"] });
+  const before = data.getCampaign("c_ai_founders").activity.failed;
+
+  await tick(); // must not throw
+
+  assert.equal(data.getCampaign("c_ai_founders").activity.failed, before + 1);
+  assert.ok(getState().decisions.some((d) => d.engine === "error" && d.campaignId === "c_ai_founders" && /Workflow failed — Follow-up/.test(d.headline)));
+  assert.ok(getState().approvals.some((a) => a.prospectId === good.id && a.touchKind === "cadence"), "another campaign's follow-up still went ahead");
+  assert.equal(bad.touches.length, 1, "nothing was sent by the failed step");
+
+  // The same failure repeating does not flood the journal, but it is still counted.
+  const journalled = getState().decisions.filter((d) => d.engine === "error").length;
+  await tick();
+  assert.equal(getState().decisions.filter((d) => d.engine === "error").length, journalled);
+  assert.ok(data.getCampaign("c_ai_founders").activity.failed >= before + 2);
+  founders.cadence = savedCadence;
+});
+
+test("replies are split into positive, negative and neutral outcomes, with conversion rates", async () => {
+  const c = campaign("c_us_saas");
+  c.outcomes = { positive: 3, negative: 1, neutral: 6 };
+  const view = data.getCampaign("c_us_saas").outcomes;
+  assert.equal(view.total, 10);
+  assert.equal(view.positiveRate, 30);
+  assert.equal(view.negativeRate, 10);
+  assert.ok(view.rates.qualify >= 0 && view.rates.reply <= 100 && view.rates.meeting <= 100);
+  assert.equal(typeof data.getCampaign("c_us_saas").activity.inFlight, "number");
 });

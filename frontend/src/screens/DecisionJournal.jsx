@@ -26,6 +26,7 @@ const ENGINE_LABEL = {
   "embedding-router": "Embedding router · no LLM call",
   "auto-approval": "Auto-approved by policy",
   policy: "Policy gate · no LLM call",
+  error: "Failed step · retried",
 };
 
 function Gutter({ first, last, expanded, color }) {

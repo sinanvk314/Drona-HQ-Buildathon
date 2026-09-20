@@ -135,9 +135,41 @@ async function runIcpFitment(s, campaign) {
         addEvent(s, { campaignId: campaign.id, type: "reject", text: `ICP Fitment Agent rejected **${prospect.company}** — ${result.reasoning}`, featured: true });
       }
     } catch (e) {
-      console.warn(`[scheduler] ICP Fitment failed for ${prospect.id}:`, e.message);
+      recordFailure(s, campaign, prospect, "ICP Fitment", e);
     }
   }
+}
+
+// A stage that throws is contained to that campaign and stage, counted against the campaign (its dashboard shows
+// failed workflows) and written to the Decision Journal, at most once a minute per identical failure so a stuck
+// stage cannot flood it. The loop retries on the next tick; other stages and other campaigns are unaffected.
+function recordFailure(s, campaign, prospect, stage, error) {
+  console.warn(`[scheduler] ${stage} failed in ${campaign.name}${prospect ? ` for ${prospect.id}` : ""}: ${error.message}`);
+  campaign.failures = campaign.failures || { total: 0 };
+  campaign.failures.total += 1;
+  const key = `${stage}:${error.message}`.slice(0, 160);
+  if (campaign.lastFailure && campaign.lastFailure.key === key && Date.now() - campaign.lastFailure.ts < 60 * 1000) return;
+  campaign.lastFailure = { key, ts: Date.now() };
+  pushDecision(s, {
+    kind: "blocked",
+    campaignId: campaign.id,
+    prospectId: prospect ? prospect.id : null,
+    agent: `${stage} stage`,
+    harness: "n/a",
+    engine: "error",
+    headline: `Workflow failed — ${stage}${prospect ? `, ${prospect.name}` : ""}`,
+    summary: `The ${stage} step failed in **${campaign.name}**${prospect ? ` for **${prospect.name}**` : ""}: ${error.message}`,
+    evidence: [error.message],
+    instruction: "A failure is contained to this campaign's stage. Nothing was sent, and the loop retries on the next tick.",
+    finalAction: "Retry on the next tick",
+  });
+}
+
+// Outcome of a reply, for the campaign's response split: positive (wants a meeting), negative (opt-out or hostile),
+// neutral (a question or an objection). Out-of-office auto-replies are not a response and are not counted.
+function countOutcome(campaign, outcome) {
+  campaign.outcomes = campaign.outcomes || { positive: 0, negative: 0, neutral: 0 };
+  campaign.outcomes[outcome] += 1;
 }
 
 const groundingLine = (g) => (g.ok ? "Grounding check: every figure and claim is supported by the knowledge or the prospect's data" : `Grounding check FAILED: ${describeIssues(g.issues).join("; ")}`);
@@ -198,7 +230,7 @@ async function runStrategy(s, campaign) {
         finalAction: `Personalise the first ${result.sequence[0]} touch`,
       });
     } catch (e) {
-      console.warn(`[scheduler] Outreach Strategy failed for ${prospect.id}:`, e.message);
+      recordFailure(s, campaign, prospect, "Outreach Strategy", e);
     }
   }
 }
@@ -310,7 +342,7 @@ async function runPersonalisation(s, campaign) {
       }
       prospect.lastTs = Date.now();
     } catch (e) {
-      console.warn(`[scheduler] Personalisation failed for ${prospect.id}:`, e.message);
+      recordFailure(s, campaign, prospect, "Personalisation", e);
     }
   }
 }
@@ -337,6 +369,7 @@ function simulateReply() {
 function applyRoutedReply(s, campaign, prospect, routed) {
   const optOut = routed.category === "unsubscribe" || routed.category === "hostile";
   recordAvoided("replyRouting");
+  if (optOut) countOutcome(campaign, "negative");
   prospect.history.push({ kind: "email", text: optOut ? `Reply received — opt-out (${routed.category})` : "Out-of-office auto-reply received", when: "Today" });
 
   if (optOut) {
@@ -403,6 +436,7 @@ async function runConversation(s, campaign) {
 
     try {
       const result = await engine.handleConversation({ campaign, prospect, conversationAgent });
+      countOutcome(campaign, result.action === "meeting" ? "positive" : "neutral");
       if (result.action === "escalate") {
         pushApproval(s, {
           type: "escalation",
@@ -487,7 +521,7 @@ async function runConversation(s, campaign) {
         prospect.nextStep = "Awaiting approval";
       }
     } catch (e) {
-      console.warn(`[scheduler] Conversation handling failed for ${prospect.id}:`, e.message);
+      recordFailure(s, campaign, prospect, "Conversation", e);
     }
     prospect.lastTs = Date.now();
   }
@@ -610,10 +644,19 @@ async function runFollowUp(s, campaign) {
       }
       prospect.lastTs = Date.now();
     } catch (e) {
-      console.warn(`[scheduler] Follow-up failed for ${prospect.id}:`, e.message);
+      recordFailure(s, campaign, prospect, "Follow-up", e);
     }
   }
 }
+
+const STAGES = [
+  ["Lead Research", runLeadResearch],
+  ["ICP Fitment", runIcpFitment],
+  ["Outreach Strategy", runStrategy],
+  ["Personalisation", runPersonalisation],
+  ["Conversation", runConversation],
+  ["Follow-up", runFollowUp],
+];
 
 export async function tick() {
   const s = getState();
@@ -621,12 +664,13 @@ export async function tick() {
 
   for (const campaign of s.campaigns) {
     if (!isRunning(s, campaign)) continue; // Draft/Paused/Completed/Archived campaigns never progress.
-    await runLeadResearch(s, campaign);
-    await runIcpFitment(s, campaign);
-    await runStrategy(s, campaign);
-    await runPersonalisation(s, campaign);
-    await runConversation(s, campaign);
-    await runFollowUp(s, campaign);
+    for (const [name, run] of STAGES) {
+      try {
+        await run(s, campaign);
+      } catch (e) {
+        recordFailure(s, campaign, null, name, e); // contained: the other stages and campaigns still run
+      }
+    }
     campaign.modifiedTs = Date.now();
   }
 }

@@ -53,6 +53,40 @@ function sourceView(x) {
   return { id: x.id, name: x.name, category: x.category, chars: x.content ? x.content.length : x.docId ? docLength(x.docId) : 0, custom: !!x.content };
 }
 
+// The campaign dashboard's "agent activity" (PS: active, completed and failed workflows, pending approvals, escalations).
+// A workflow here is one agent step for one prospect: in flight = prospects still moving through the funnel, completed =
+// decisions the running system made (each is in the Decision Journal), failed = steps that threw (contained and retried).
+function activityFor(s, c, pending) {
+  const inFlight = s.prospects.filter(
+    (p) => p.campaignId === c.id && ["researched", "qualified", "contacted", "engaged"].includes(p.stage) && !p.closedOut
+  ).length;
+  return {
+    inFlight,
+    completed: s.decisions.filter((d) => d.campaignId === c.id && d.engine && d.engine !== "error").length,
+    failed: (c.failures && c.failures.total) || 0,
+    pendingApprovals: pending.length,
+    escalations: pending.filter((a) => a.type === "escalation").length,
+  };
+}
+
+// Outcomes: how replies split (positive = wants a meeting, negative = opt-out or hostile, neutral = a question or an
+// objection) and the conversion rates between funnel stages.
+function outcomesFor(c, f, o) {
+  const split = c.outcomes || { positive: 0, negative: 0, neutral: 0 };
+  const total = split.positive + split.negative + split.neutral;
+  return {
+    positive: split.positive, negative: split.negative, neutral: split.neutral, total,
+    positiveRate: pct(split.positive, total), negativeRate: pct(split.negative, total),
+    meetings: f.meeting,
+    rates: {
+      qualify: pct(f.qualified, f.discovered),
+      reply: Math.min(100, pct(o.replies, f.contacted)),
+      meeting: Math.min(100, pct(f.meeting, f.contacted)),
+      opportunity: Math.min(100, pct(f.opportunity, f.meeting)),
+    },
+  };
+}
+
 // What the campaign page needs to manage this campaign's prompts: its own system prompt (versioned), which library
 // version it is pinned to for each agent, its overrides, and who changed what.
 function promptsView(s, c) {
@@ -182,6 +216,8 @@ export function getCampaign(id) {
       id: a.id, title: a.title, globallyEnabled: a.enabled,
       enabled: !(c.agentsEnabled && c.agentsEnabled[a.id] === false),
     })),
+    activity: activityFor(s, c, pending),
+    outcomes: outcomesFor(c, f, o),
     prompts: promptsView(s, c),
     approvalPolicy: { ...c.approvals },
     cadence: { ...(c.cadence || { maxTouches: 3, waitHours: 72 }) },

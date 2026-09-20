@@ -10,6 +10,7 @@ import { ACTION_LABEL, useCampaignActions } from "../hooks/useCampaignActions.js
 import { archiveCampaign, completeCampaign, duplicateCampaign, getCampaign } from "../services/api.js";
 import { ConfirmDialog } from "../components/ui/Modal.jsx";
 import CampaignAgentsPanel from "../components/campaign/CampaignAgentsPanel.jsx";
+import CampaignActivity from "../components/campaign/CampaignActivity.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
@@ -112,6 +113,8 @@ export default function CampaignDetail({ params }) {
             </div>
           ))}
         </div>
+
+        {!draft && <CampaignActivity activity={c.activity} outcomes={c.outcomes} />}
 
         <div className="card" style={{ padding: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Prospect Funnel</div>
