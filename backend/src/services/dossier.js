@@ -33,11 +33,19 @@ export function addFact(prospect, { text, source = "unknown", kind = "context", 
   return true;
 }
 
-export function addNote(prospect, { agent, harness = "", engine = "", note }) {
+/** A plain-words reason the rules answered instead of the model, or "" when the model answered or nothing failed. */
+export function fallbackWhy(engine, reason) {
+  if (engine !== "rule" || !reason || /^clear-cut/.test(reason)) return "";
+  const short = String(reason).replace(/\s+/g, " ").slice(0, 220);
+  return `The AI did not respond (${short}), so the rule engine decided this step.`;
+}
+
+export function addNote(prospect, { agent, harness = "", engine = "", note, fallbackReason = "" }) {
   const d = ensureDossier(prospect);
   const clean = clip(note, 320);
   if (!clean) return;
-  d.notes.push({ agent, harness, engine, note: clean, ts: Date.now() });
+  const fallback = fallbackWhy(engine, fallbackReason);
+  d.notes.push({ agent, harness, engine, note: clean, ...(fallback ? { fallback } : {}), ts: Date.now() });
   if (d.notes.length > MAX_NOTES) d.notes.shift();
 }
 

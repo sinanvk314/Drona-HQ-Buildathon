@@ -168,6 +168,7 @@ export default function ProspectDetail({ params }) {
                       <button type="button" className="link" style={{ marginLeft: 8, fontSize: 12 }} onClick={() => setInspect({ agentId: AGENT_IDS[n.agent], harness: n.harness })}>View prompt</button>
                     )}
                     <div style={{ color: "var(--text-2)" }}>{n.note}</div>
+                    {n.fallback && <div style={{ color: "var(--warning)", fontSize: 12, marginTop: 2 }}>{n.fallback}</div>}
                   </div>
                 ))}
               </div>

@@ -19,7 +19,7 @@ import { pickRep } from "./reps.js";
 import { outreachAllowed } from "./limits.js";
 import { describeIssues } from "./grounding.js";
 import { hoursToMs } from "./simTime.js";
-import { addFact, addNote, ensureDossier } from "./dossier.js";
+import { addFact, addNote, ensureDossier, fallbackWhy } from "./dossier.js";
 import { SDR_STEPS } from "./sdrSteps.js";
 import { shortDate } from "../utils/format.js";
 import { isRealCampaign, realChannels, channelBlocker } from "./realMode.js";
@@ -35,6 +35,13 @@ const agentEnabled = (s, id, campaign) =>
 const channelEnabled = (s, key) => s.channels.some((c) => c.key === key && c.enabled);
 
 function pushDecision(s, decision) {
+  // When the rule engine answered because the model did not, say so in the journal entry and in the prospect's own log.
+  const why = fallbackWhy(decision.engine, decision.fallbackReason);
+  if (why) {
+    decision = { ...decision, evidence: [...(decision.evidence || []), why] };
+    const p = decision.prospectId && s.prospects.find((x) => x.id === decision.prospectId);
+    if (p) p.history.push({ kind: "chat", text: `${decision.agent}: ${why}`, when: "Today" });
+  }
   s.seq += 1;
   s.decisions.unshift({
     id: `d${s.seq}`,
@@ -167,19 +174,19 @@ async function runResearch(s, campaign) {
       for (const f of result.facts) addFact(prospect, { text: f.text, source: "research", kind: f.kind });
       d.hooks = result.hooks;
       d.gaps = result.gaps;
-      prospect.research = { summary: result.summary, confidence: result.confidence, engine: result.engine, harness: result.harness, ts: Date.now() };
+      prospect.research = { summary: result.summary, confidence: result.confidence, engine: result.engine, fallbackReason: result.fallbackReason, harness: result.harness, ts: Date.now() };
       prospect.stage = "researched";
       prospect.nextStep = "ICP scoring";
       prospect.lastAction = "Researched, {ago}";
       prospect.lastTs = Date.now();
-      addNote(prospect, { agent: "Research Agent", harness: result.harness, engine: result.engine, note: `${result.summary} ${result.hooks.length ? `Reasons to reach out: ${result.hooks.join("; ")}.` : "No specific reason to reach out is known."}${result.gaps.length ? ` Not known: ${result.gaps.join("; ")}.` : ""}` });
+      addNote(prospect, { agent: "Research Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `${result.summary} ${result.hooks.length ? `Reasons to reach out: ${result.hooks.join("; ")}.` : "No specific reason to reach out is known."}${result.gaps.length ? ` Not known: ${result.gaps.join("; ")}.` : ""}` });
       pushDecision(s, {
         kind: "enriched",
         campaignId: campaign.id,
         prospectId: prospect.id,
         agent: "Research Agent",
         harness: result.harness,
-        engine: result.engine,
+        engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `Researched — ${prospect.name}, ${prospect.company}`,
         summary: `Research Agent built a brief on **${prospect.name}**, ${prospect.company} (${result.confidence} confidence)`,
         evidence: [result.summary, ...result.hooks.map((h) => `Reason to reach out: ${h}`), ...result.gaps.map((g) => `Not known: ${g}`), ...(result.dropped ? [`${result.dropped} statement${result.dropped === 1 ? "" : "s"} dropped: not supported by the prospect's own data`] : [])],
@@ -242,6 +249,10 @@ async function runIcpFitment(s, campaign) {
       if (result.engine === "rule" && result.fallbackReason && result.judgeable === false) {
         prospect.icpRetryAt = Date.now() + 60 * 1000;
         prospect.nextStep = "Waiting for the AI to judge fit";
+        if (!prospect.icpHeldLogged) {
+          prospect.icpHeldLogged = true; // said once in the prospect's log, not every retry
+          prospect.history.push({ kind: "chat", text: "ICP Fitment Agent: the AI did not respond and the rules cannot judge this audience, so fit is not decided yet. It is retried every minute and nobody is rejected on a guess.", when: "Today" });
+        }
         recordFailure(s, campaign, prospect, "icp", new Error(`the AI could not be reached and the rules cannot judge this audience, so ${prospect.name} was not rejected (${String(result.fallbackReason).slice(0, 200)})`));
         continue;
       }
@@ -261,7 +272,7 @@ async function runIcpFitment(s, campaign) {
         prospect.nextStep = "—";
       }
       prospect.lastTs = Date.now();
-      addNote(prospect, { agent: "ICP Fitment Agent", harness: result.harness, engine: result.engine, note: `${result.qualified ? "Qualified" : "Rejected"} at ${result.score}/100. ${result.reasoning}` });
+      addNote(prospect, { agent: "ICP Fitment Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `${result.qualified ? "Qualified" : "Rejected"} at ${result.score}/100. ${result.reasoning}` });
 
       pushDecision(s, {
         kind: result.qualified ? "qualified" : "rejected",
@@ -269,7 +280,7 @@ async function runIcpFitment(s, campaign) {
         prospectId: prospect.id,
         agent: "ICP Fitment Agent",
         harness: result.harness,
-        engine: result.engine,
+        engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `${result.qualified ? "Qualified" : "Rejected"} — ${prospect.name}, ${prospect.company}`,
         summary: `ICP Fitment Agent ${result.qualified ? "qualified" : "rejected"} **${prospect.name}**, ${prospect.company}${result.qualified ? ` (score ${result.score}/100)` : ""}`,
         evidence: result.evidence,
@@ -364,15 +375,15 @@ async function runStrategy(s, campaign) {
     try {
       if (!checkConflict(s, prospect).ok) continue; // the Personalisation step records the block
       const result = await engine.planOutreach({ campaign, prospect, strategyAgent, allowedChannels });
-      prospect.plan = { sequence: result.sequence, waitHours: result.waitHours, reasoning: result.reasoning, engine: result.engine, harness: result.harness, ts: Date.now() };
-      addNote(prospect, { agent: "Outreach Strategy Agent", harness: result.harness, engine: result.engine, note: `Plan ${result.sequence.join(" → ")}, ${result.waitHours}h between touches. ${result.reasoning}` });
+      prospect.plan = { sequence: result.sequence, waitHours: result.waitHours, reasoning: result.reasoning, engine: result.engine, fallbackReason: result.fallbackReason, harness: result.harness, ts: Date.now() };
+      addNote(prospect, { agent: "Outreach Strategy Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `Plan ${result.sequence.join(" → ")}, ${result.waitHours}h between touches. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
         prospectId: prospect.id,
         agent: "Outreach Strategy Agent",
         harness: result.harness,
-        engine: result.engine,
+        engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `Plan — ${prospect.name}, ${prospect.company}: ${result.sequence.join(" → ")}`,
         summary: `Outreach Strategy Agent planned **${prospect.name}**, ${prospect.company}: ${result.sequence.join(" → ")}, ${result.waitHours}h between touches`,
         evidence: [result.reasoning, `Enabled channels for this campaign: ${allowedChannels.join(", ")}`],
@@ -435,14 +446,14 @@ async function runPersonalisation(s, campaign) {
       }
 
       const result = await engine.draftOutreach({ campaign, prospect, personalisationAgent, channel: planned || undefined });
-      addNote(prospect, { agent: "Personalisation Agent", harness: result.harness, engine: result.engine, note: `Drafted the ${result.channel} opening. ${result.reasoning}` });
+      addNote(prospect, { agent: "Personalisation Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `Drafted the ${result.channel} opening. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
         prospectId: prospect.id,
         agent: "Personalisation & Outreach Strategy Agent",
         harness: result.harness,
-        engine: result.engine,
+        engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `Channel chosen — ${prospect.name}, ${prospect.company}`,
         summary: `Personalisation Agent chose ${result.channel} for **${prospect.name}**, ${prospect.company}`,
         evidence: [result.reasoning, groundingLine(result.grounding)],
@@ -593,7 +604,7 @@ async function answerProposal(s, campaign, prospect, { text, channel, conversati
   const first = greetingName(prospect.name);
   const pick = await engine.resolveMeetingReply({ campaign, prospect, slots: m.slots, replyText: text, conversationAgent });
   countOutcome(campaign, pick.declined ? "negative" : pick.choice >= 0 ? "positive" : "neutral");
-  addNote(prospect, { agent: "Conversation Agent", harness: pick.harness, engine: pick.engine, note: `Answer to the proposed times: ${pick.choice >= 0 ? `accepted ${m.slots[pick.choice].label}` : pick.declined ? "declined" : pick.alternative ? `asked for "${pick.alternative}"` : "unclear"}. ${pick.reasoning}` });
+  addNote(prospect, { agent: "Conversation Agent", harness: pick.harness, engine: pick.engine, fallbackReason: pick.fallbackReason, note: `Answer to the proposed times: ${pick.choice >= 0 ? `accepted ${m.slots[pick.choice].label}` : pick.declined ? "declined" : pick.alternative ? `asked for "${pick.alternative}"` : "unclear"}. ${pick.reasoning}` });
 
   if (pick.choice >= 0) {
     const slot = m.slots[pick.choice];
@@ -614,7 +625,7 @@ async function answerProposal(s, campaign, prospect, { text, channel, conversati
       prospectId: prospect.id,
       agent: "Conversation & Follow-up Agent",
       harness: pick.harness,
-      engine: pick.engine,
+      engine: pick.engine, fallbackReason: pick.fallbackReason,
       headline: `Meeting booked — ${prospect.name}, ${prospect.company}: ${slot.label}`,
       summary: `Conversation Agent booked **${prospect.name}**, ${prospect.company} for ${slot.label}${rep ? ` with ${rep.name}` : ""}`,
       evidence: [`The prospect's reply: "${text.slice(0, 160)}"`, pick.reasoning, `Offered ${m.slots.length} times inside ${rep ? `${rep.name}'s` : "the campaign's"} working hours; ${slot.label} was free on the calendar`],
@@ -693,7 +704,7 @@ export async function processReply(s, campaign, prospect, { text, channel, kind 
 
     const result = await engine.handleConversation({ campaign, prospect, conversationAgent });
     countOutcome(campaign, result.action === "meeting" ? "positive" : "neutral");
-    addNote(prospect, { agent: "Conversation Agent", harness: result.harness, engine: result.engine, note: `Reply on ${channel}: ${result.action}. ${result.reasoning}` });
+    addNote(prospect, { agent: "Conversation Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `Reply on ${channel}: ${result.action}. ${result.reasoning}` });
     const warnings = describeIssues(result.grounding.issues);
 
     if (result.action === "escalate") {
@@ -717,7 +728,7 @@ export async function processReply(s, campaign, prospect, { text, channel, kind 
         prospect.meeting = meeting;
         recordReply(s, campaign, prospect, { channel, body });
         pushDecision(s, {
-          kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine,
+          kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason,
           headline: `Meeting times offered — ${prospect.name}, ${prospect.company}`,
           summary: `Conversation Agent offered **${prospect.name}**, ${prospect.company} ${slots.length} times: ${slots.map((x) => x.label).join("; ")}`,
           evidence: [result.reasoning, `Times are free on ${rep ? `${rep.name}'s` : "the campaign's"} calendar, inside working hours, on different days`],
@@ -742,7 +753,7 @@ export async function processReply(s, campaign, prospect, { text, channel, kind 
     if (sendsItself(s, campaign, prospect, "answer", result.grounding.ok)) {
       recordReply(s, campaign, prospect, { channel, body: answer });
       pushDecision(s, {
-        kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine,
+        kind: "strategy", campaignId: campaign.id, prospectId: prospect.id, agent: "Conversation & Follow-up Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `Answered — ${prospect.name}, ${prospect.company}`, summary: `Conversation Agent answered **${prospect.name}**, ${prospect.company}`,
         evidence: [result.reasoning, groundingLine(result.grounding)], retrieved: result.retrieved, instruction: result.instruction, finalAction: "Send the answer",
       });
@@ -940,14 +951,14 @@ async function runFollowUp(s, campaign) {
       const isLast = prospect.touches.length + 1 >= touchLimit(campaign, prospect);
       const result = await engine.draftFollowUp({ campaign, prospect, followupAgent, channel, touchNumber, isLast });
 
-      addNote(prospect, { agent: "Follow-up Agent", harness: result.harness, engine: result.engine, note: `Follow-up ${touchNumber} on ${channel}${result.angle ? ` (${result.angle})` : ""}. ${result.reasoning}` });
+      addNote(prospect, { agent: "Follow-up Agent", harness: result.harness, engine: result.engine, fallbackReason: result.fallbackReason, note: `Follow-up ${touchNumber} on ${channel}${result.angle ? ` (${result.angle})` : ""}. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
         prospectId: prospect.id,
         agent: "Follow-up Agent",
         harness: result.harness,
-        engine: result.engine,
+        engine: result.engine, fallbackReason: result.fallbackReason,
         headline: `Follow-up ${touchNumber} on ${channel} — ${prospect.name}, ${prospect.company}`,
         summary: `Follow-up Agent drafted follow-up ${touchNumber} on ${channel} for **${prospect.name}**, ${prospect.company}${isLast ? " (last touch)" : ""}`,
         evidence: [result.reasoning, `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}: ${prospect.touches.map((t) => t.channel).join(" → ")}`, groundingLine(result.grounding)],

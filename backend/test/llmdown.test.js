@@ -79,5 +79,27 @@ test("with the model down, a prospect the rules cannot judge waits instead of be
   assert.equal(p.fit, null);
   assert.ok(p.icpRetryAt > Date.now(), "tried again later");
   assert.match(p.nextStep, /Waiting for the AI/);
+  assert.ok(p.history.some((h) => /cannot judge this audience/.test(h.text)), "and the prospect's log says why");
   config.agentEngine = "rule";
+});
+
+test("when the rules answer because the model did not, the prospect's log, its hand-off note and the journal all say so, with the reason", async () => {
+  config.agentEngine = "gemini";
+  const { id } = data.createCampaign(
+    { name: "Fallback log", description: "d", owner: "t", objective: "Book a call", offer: "A workshop.", mode: "single", sourcing: "simulated-search", target: { name: "Log Person", title: "Founder", organisation: "Logco", email: "log@logco.in", notes: "Runs a club" }, channels: ["email"], dailyLimit: 50, workingHours: "9:00 AM - 6:00 PM", approvals: { firstOutreach: true, level: "manual" }, sources: [] },
+    { launch: true }
+  );
+  data.setCampaignReps(id, ["r_jd"]);
+  const c = getState().campaigns.find((x) => x.id === id);
+  await tickCampaign(c);
+  const p = getState().prospects.find((x) => x.campaignId === id);
+  config.agentEngine = "rule";
+
+  assert.ok(p.history.some((h) => /Research Agent: The AI did not respond \(.*quota.*\), so the rule engine decided this step/i.test(h.text)), "the prospect's log says it");
+  const note = p.dossier.notes.find((n) => n.agent === "Research Agent");
+  assert.equal(note.engine, "rule");
+  assert.match(note.fallback, /did not respond.*quota/i, "the hand-off note keeps the reason");
+  const decision = getState().decisions.find((d) => d.prospectId === p.id && d.agent === "Research Agent");
+  assert.ok(decision.evidence.some((e) => /did not respond.*quota/i.test(e)), "so does the Decision Journal entry");
+  assert.match(decision.fallbackReason, /quota/i);
 });
