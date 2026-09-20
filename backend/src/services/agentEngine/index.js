@@ -7,6 +7,7 @@ import * as llm from "./llmEngine.js";
 import * as dronahq from "./dronahqEngine.js";
 import * as gemini from "./geminiEngine.js";
 import { retrieve } from "../rag.js";
+import { checkGrounding, describeIssues } from "../grounding.js";
 import { capReached, recordAvoided, recordLlmDecision, recordLlmError, recordRuleFallback } from "../usage.js";
 
 function activePromptFor(agent, campaignId) {
@@ -49,6 +50,30 @@ async function withFallback(llmCall, ruleCall, dronahqCall, geminiCall) {
   return { ...ruleCall(), engine: "rule", ...(failures.length ? { fallbackReason: failures.join(" | ") } : {}) };
 }
 
+// Every customer-facing draft is checked against the knowledge and prospect data it was written from (grounding.js).
+// If the check fails and an LLM wrote it, the agent gets ONE more try with the problems named; the better of the two
+// is kept. The result always carries the check, so the scheduler can refuse to auto-send a draft that still fails.
+const retryNote = (issues) =>
+  `Your previous draft was rejected for unsupported claims: ${describeIssues(issues).join("; ")}. Rewrite it using only facts from the knowledge and the prospect's data, with none of these claims.`;
+
+async function groundedRun(run, check) {
+  let result = await run("");
+  let grounding = check(result);
+  if (!grounding.ok && result.engine !== "rule") {
+    try {
+      const retry = await run(retryNote(grounding.issues));
+      const retryGrounding = check(retry);
+      if (retryGrounding.issues.length <= grounding.issues.length) {
+        result = { ...retry, regenerated: true };
+        grounding = retryGrounding;
+      }
+    } catch (e) {
+      console.warn(`[agentEngine] regeneration after a failed grounding check did not work (${e.message}); keeping the first draft`);
+    }
+  }
+  return { ...result, grounding };
+}
+
 export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   const { text, harness, override } = activePromptFor(icpAgent, campaign.id);
   const knowledge = await retrieve(campaign, `${campaign.icpText} ${campaign.qualificationPrompt}`, 2);
@@ -84,12 +109,16 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
 export async function draftOutreach({ campaign, prospect, personalisationAgent, channel }) {
   const { text, harness, override } = activePromptFor(personalisationAgent, campaign.id);
   const knowledge = await retrieve(campaign, `${prospect.company} ${prospect.industry} ${(prospect.reasons || []).join(" ")}`, 2);
-  const result = await withFallback(
-    () => llm.llmDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
-    () => rule.ruleDraftOutreach({ campaign, prospect, knowledge, override, channel }),
-    () => dronahq.dronahqDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
-    () => gemini.geminiDraftOutreach({ campaign, prospect, promptText: text, override, knowledge, channel })
-  );
+  const run = (feedback) => {
+    const guided = feedback ? `${override || ""} ${feedback}`.trim() : override;
+    return withFallback(
+      () => llm.llmDraftOutreach({ campaign, prospect, promptText: text, override: guided, knowledge }),
+      () => rule.ruleDraftOutreach({ campaign, prospect, knowledge, override: guided, channel }),
+      () => dronahq.dronahqDraftOutreach({ campaign, prospect, promptText: text, override: guided, knowledge }),
+      () => gemini.geminiDraftOutreach({ campaign, prospect, promptText: text, override: guided, knowledge, channel })
+    );
+  };
+  const result = await groundedRun(run, (r) => checkGrounding({ text: `${r.subject} ${r.body}`, knowledge, prospect, campaign }));
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
 }
 
@@ -117,12 +146,16 @@ export async function draftFollowUp({ campaign, prospect, followupAgent, channel
   const topic = FOLLOWUP_TOPICS[(touchNumber - 1) % FOLLOWUP_TOPICS.length];
   const knowledge = await retrieve(campaign, `${prospect.industry} ${topic}`, 2);
   const args = { campaign, prospect, knowledge, channel, touchNumber, isLast };
-  const result = await withFallback(
-    null,
-    () => rule.ruleFollowUp(args),
-    null,
-    () => gemini.geminiDraftFollowUp({ ...args, promptText: text, override })
-  );
+  const run = (feedback) => {
+    const guided = feedback ? `${override || ""} ${feedback}`.trim() : override;
+    return withFallback(
+      null,
+      () => rule.ruleFollowUp(args),
+      null,
+      () => gemini.geminiDraftFollowUp({ ...args, promptText: text, override: guided })
+    );
+  };
+  const result = await groundedRun(run, (r) => checkGrounding({ text: `${r.subject} ${r.body}`, knowledge, prospect, campaign }));
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
 }
 
@@ -130,12 +163,16 @@ export async function handleConversation({ campaign, prospect, conversationAgent
   const { text, harness, override } = activePromptFor(conversationAgent, campaign.id);
   const lastIn = (prospect.conversation || []).filter((c) => c.dir === "in").slice(-1)[0];
   const knowledge = await retrieve(campaign, lastIn ? lastIn.text : campaign.objective, 2);
-  const result = await withFallback(
-    () => llm.llmHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
-    () => rule.ruleHandleConversation({ campaign, prospect, knowledge }),
-    () => dronahq.dronahqHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
-    () => gemini.geminiHandleConversation({ campaign, prospect, promptText: text, override, knowledge })
-  );
+  const run = (feedback) => {
+    const guided = feedback ? `${override || ""} ${feedback}`.trim() : override;
+    return withFallback(
+      () => llm.llmHandleConversation({ campaign, prospect, promptText: text, override: guided, knowledge }),
+      () => rule.ruleHandleConversation({ campaign, prospect, knowledge }),
+      () => dronahq.dronahqHandleConversation({ campaign, prospect, promptText: text, override: guided, knowledge }),
+      () => gemini.geminiHandleConversation({ campaign, prospect, promptText: text, override: guided, knowledge })
+    );
+  };
+  const result = await groundedRun(run, (r) => checkGrounding({ text: r.draft || "", knowledge, prospect, campaign, confirmsMeeting: r.action === "meeting" }));
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
 }
 

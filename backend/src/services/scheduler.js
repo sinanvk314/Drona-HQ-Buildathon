@@ -13,6 +13,7 @@ import { classifyReply } from "./replyRouter.js";
 import { recordAvoided } from "./usage.js";
 import { recordTouch, touchLimit } from "./outreach.js";
 import { outreachAllowed } from "./limits.js";
+import { describeIssues } from "./grounding.js";
 import { hoursToMs } from "./simTime.js";
 import { shortDate } from "../utils/format.js";
 
@@ -136,6 +137,8 @@ async function runIcpFitment(s, campaign) {
   }
 }
 
+const groundingLine = (g) => (g.ok ? "Grounding check: every figure and claim is supported by the knowledge or the prospect's data" : `Grounding check FAILED: ${describeIssues(g.issues).join("; ")}`);
+
 const HOLD_LOG_INTERVAL_MS = 60 * 1000;
 
 // An outreach limit (working hours, daily limit, frequency cap) is holding this prospect back. One Decision Journal
@@ -256,14 +259,15 @@ async function runPersonalisation(s, campaign) {
         engine: result.engine,
         headline: `Channel chosen — ${prospect.name}, ${prospect.company}`,
         summary: `Personalisation Agent chose ${result.channel} for **${prospect.name}**, ${prospect.company}`,
-        evidence: [result.reasoning],
+        evidence: [result.reasoning, groundingLine(result.grounding)],
         retrieved: result.retrieved,
         instruction: result.instruction,
         finalAction: `Draft ${result.channel} message`,
       });
 
       const auto = campaign.approvals.firstOutreach ? autoApproval(s, campaign, prospect, "first") : { ok: true, why: "Approval not required for this campaign" };
-      if (!auto.ok) {
+      // A draft that fails the grounding check is never auto-sent, whatever the approval level says.
+      if (!auto.ok || !result.grounding.ok) {
         pushApproval(s, {
           type: "first",
           touchKind: "first",
@@ -272,8 +276,9 @@ async function runPersonalisation(s, campaign) {
           campaignId: campaign.id,
           name: prospect.name,
           company: prospect.company,
-          tag: "Send first outreach email",
-          tagTone: "neutral",
+          tag: result.grounding.ok ? "Send first outreach email" : "Review draft: unsupported claim",
+          tagTone: result.grounding.ok ? "neutral" : "danger",
+          warnings: describeIssues(result.grounding.issues),
           summary: `Send first outreach email — **${prospect.name}**, ${prospect.company}`,
           recommendation: { title: `Send the opening ${result.channel} — ${prospect.name} scored ${prospect.fit}/100.`, body: result.reasoning },
           draft: { subject: result.subject, body: result.body },
@@ -405,6 +410,7 @@ async function runConversation(s, campaign) {
           name: prospect.name,
           company: prospect.company,
           tag: "Escalation: objection needs a human",
+          warnings: describeIssues(result.grounding.issues),
           tagTone: "danger",
           summary: `Escalation — **${prospect.name}** raised an objection`,
           recommendation: { title: "Respond personally — this needs a compliance-accurate answer.", body: result.reasoning },
@@ -416,7 +422,7 @@ async function runConversation(s, campaign) {
         prospect.nextStep = "Human review";
         addEvent(s, { campaignId: campaign.id, type: "escalate", text: `Conversation Agent escalated **${prospect.name}** — needs human input`, featured: false });
       } else if (result.action === "meeting") {
-        if (campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok) {
+        if ((campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok) || !result.grounding.ok) {
           pushApproval(s, {
             type: "meeting",
             touchKind: "reply",
@@ -426,6 +432,7 @@ async function runConversation(s, campaign) {
             name: prospect.name,
             company: prospect.company,
             tag: "Book meeting",
+            warnings: describeIssues(result.grounding.issues),
             tagTone: "neutral",
             summary: `Book meeting — **${prospect.name}**, ${prospect.company}`,
             recommendation: { title: "Confirm the proposed time.", body: result.reasoning },
@@ -466,6 +473,7 @@ async function runConversation(s, campaign) {
           name: prospect.name,
           company: prospect.company,
           tag: "Send follow-up email",
+          warnings: describeIssues(result.grounding.issues),
           tagTone: "neutral",
           summary: `Send follow-up email — **${prospect.name}**, ${prospect.company}`,
           recommendation: { title: "Send a contextual follow-up.", body: result.reasoning },
@@ -567,13 +575,13 @@ async function runFollowUp(s, campaign) {
         engine: result.engine,
         headline: `Follow-up ${touchNumber} on ${channel} — ${prospect.name}, ${prospect.company}`,
         summary: `Follow-up Agent drafted follow-up ${touchNumber} on ${channel} for **${prospect.name}**, ${prospect.company}${isLast ? " (last touch)" : ""}`,
-        evidence: [result.reasoning, `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}: ${prospect.touches.map((t) => t.channel).join(" → ")}`],
+        evidence: [result.reasoning, `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}: ${prospect.touches.map((t) => t.channel).join(" → ")}`, groundingLine(result.grounding)],
         retrieved: result.retrieved,
         instruction: result.instruction,
-        finalAction: goesOutUnattended ? `Send the ${channel} follow-up` : "Queue the follow-up for human approval",
+        finalAction: goesOutUnattended && result.grounding.ok ? `Send the ${channel} follow-up` : "Queue the follow-up for human approval",
       });
 
-      if (!goesOutUnattended) {
+      if (!goesOutUnattended || !result.grounding.ok) {
         pushApproval(s, {
           type: "followup",
           touchKind: "cadence",
@@ -582,8 +590,9 @@ async function runFollowUp(s, campaign) {
           campaignId: campaign.id,
           name: prospect.name,
           company: prospect.company,
-          tag: `Send follow-up ${touchNumber}`,
-          tagTone: "neutral",
+          tag: result.grounding.ok ? `Send follow-up ${touchNumber}` : "Review draft: unsupported claim",
+          tagTone: result.grounding.ok ? "neutral" : "danger",
+          warnings: describeIssues(result.grounding.issues),
           summary: `Send follow-up ${touchNumber} on ${channel} — **${prospect.name}**, ${prospect.company}`,
           recommendation: { title: `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}; follow up on ${channel}.`, body: result.reasoning },
           draft: { subject: result.subject, body: result.body },
