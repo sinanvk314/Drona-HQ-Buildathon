@@ -5,6 +5,7 @@ import { Router } from "express";
 import { asyncRoute } from "../middleware/errors.js";
 import * as data from "../services/data.js";
 import { authConfig, login, me } from "../services/auth.js";
+import * as dev from "../services/dev.js";
 
 export const router = Router();
 
@@ -45,6 +46,21 @@ router.post("/campaigns/:id/complete", asyncRoute(async (req, res) => res.json(d
 router.post("/campaigns/:id/archive", asyncRoute(async (req, res) => res.json(data.archiveCampaign(req.params.id))));
 
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
+
+// ---- Dev tab: sandbox with a real person as the prospect, search playground, real-data tests, runtime ------------
+router.get("/dev/runtime", asyncRoute(async (req, res) => res.json(dev.getRuntime())));
+router.get("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.listSandboxes())));
+router.post("/dev/sandboxes", asyncRoute(async (req, res) => res.json(dev.createSandbox(req.body || {}))));
+router.get("/dev/sandboxes/:id", asyncRoute(async (req, res) => res.json(dev.getSandbox(req.params.id))));
+router.post("/dev/sandboxes/:id/run", asyncRoute(async (req, res) => res.json(await dev.runSandbox(req.params.id))));
+router.post("/dev/sandboxes/:id/reply", asyncRoute(async (req, res) => res.json(await dev.sandboxReply(req.params.id, (req.body || {}).text))));
+router.post("/dev/sandboxes/:id/feedback", asyncRoute(async (req, res) => res.json(await dev.setSandboxFeedback(req.params.id, req.body || {}))));
+router.delete("/dev/sandboxes/:id", asyncRoute(async (req, res) => res.json(await dev.deleteSandbox(req.params.id))));
+router.post("/dev/search", asyncRoute(async (req, res) => res.json(await dev.devSearch(req.body || {}))));
+router.get("/dev/tests", asyncRoute(async (req, res) => res.json(dev.listDevTests())));
+router.post("/dev/tests", asyncRoute(async (req, res) => res.json(await dev.addDevTest(req.body || {}))));
+router.delete("/dev/tests/:id", asyncRoute(async (req, res) => res.json(await dev.removeDevTest(req.params.id))));
+router.post("/dev/tests/run", asyncRoute(async (req, res) => res.json(await dev.runDevTests((req.body || {}).campaignId))));
 
 // ---- representatives ------------------------------------------------------------------------------------
 router.get("/reps", asyncRoute(async (req, res) => res.json(data.getReps())));

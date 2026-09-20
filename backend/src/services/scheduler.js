@@ -865,6 +865,19 @@ const RUNNERS = {
 };
 const STAGES = SDR_STEPS.map((step) => [step.title, RUNNERS[step.key]]);
 
+/** Runs every step of the SDR for one campaign right now (the Dev sandbox uses this instead of waiting for the next tick). */
+export async function tickCampaign(campaign) {
+  const s = getState();
+  for (const [name, run] of STAGES) {
+    try {
+      await run(s, campaign);
+    } catch (e) {
+      recordFailure(s, campaign, null, name, e);
+    }
+  }
+  campaign.modifiedTs = Date.now();
+}
+
 export async function tick() {
   const s = getState();
   if (s.killSwitch.active) return;

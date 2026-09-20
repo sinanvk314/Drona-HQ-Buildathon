@@ -13,6 +13,8 @@ import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
 import { SDR_STEPS } from "./sdrSteps.js";
+import { newProspect } from "./prospects.js";
+import { addFact } from "./dossier.js";
 import { recordReply, recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
 import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
@@ -116,7 +118,8 @@ function prospectRow(s, p) {
   };
 }
 
-const pendingApprovals = (s) => s.approvals.filter((a) => a.status === "pending").sort((a, b) => b.requestedTs - a.requestedTs);
+const isSandbox = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && c.sandbox); };
+const pendingApprovals = (s) => s.approvals.filter((a) => a.status === "pending" && !isSandbox(s, a.campaignId)).sort((a, b) => b.requestedTs - a.requestedTs);
 
 function approvalQueueItem(a) {
   return { id: a.id, text: a.summary, tag: a.tag, tone: a.tagTone, ts: a.requestedTs };
@@ -162,7 +165,7 @@ export function getShellState() {
 
 export function getCommandCenter() {
   const s = getState();
-  const cs = s.campaigns;
+  const cs = s.campaigns.filter((c) => !c.sandbox);
   const sum = (k) => cs.reduce((a, c) => a + c.funnel[k], 0);
   const live = cs.filter((c) => c.status === "live").length;
   const paused = cs.filter((c) => c.status === "paused").length;
@@ -189,7 +192,7 @@ export function getCommandCenter() {
     campaigns: cs.map((c) => cardOf(s, c)),
     funnel: STAGE_KEYS.map((k) => ({ key: k, label: STAGE_LABELS[k], value: sum(k) })),
     feed: s.events
-      .filter((e) => e.featured)
+      .filter((e) => e.featured && !isSandbox(s, e.campaignId))
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 6)
       .map((e) => {
@@ -244,6 +247,7 @@ const union = (options, chosen) => [...options, ...chosen.filter((x) => !options
 function formValues(c) {
   return {
     name: c.name, description: c.description, owner: c.owner, objective: c.objective, offer: c.offer || "", icpText: c.icpText,
+    mode: c.mode || "bulk", sourcing: c.sourcing || "synthetic", target: c.target || null,
     geographyOptions: union(GEOGRAPHY_OPTIONS, c.geography), geography: [...c.geography],
     personaOptions: union(PERSONA_OPTIONS, c.personas), personas: [...c.personas],
     companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: [...c.channels],
@@ -260,6 +264,7 @@ function formValues(c) {
 export function getCampaignDefaults() {
   return {
     name: "", description: "", owner: currentUser(), objective: "", offer: "", brief: "", icpText: "",
+    mode: "bulk", sourcing: "simulated-search", target: { name: "", title: "", organisation: "", email: "", notes: "" },
     geographyOptions: [...GEOGRAPHY_OPTIONS], geography: [], personaOptions: [...PERSONA_OPTIONS], personas: [],
     companyCriteria: "", exclusionCriteria: "", channels: ["email"], qualificationPrompt: "",
     dailyLimit: 25, workingHours: "9:00 AM – 6:00 PM", cadence: { maxTouches: 3, waitHours: 72 },
@@ -285,7 +290,7 @@ export function getComparison(ids) {
   const usage = getUsage();
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
-  const chosen = (ids && ids.length ? ids : s.campaigns.filter((c) => c.status !== "archived").map((c) => c.id))
+  const chosen = (ids && ids.length ? ids : s.campaigns.filter((c) => c.status !== "archived" && !c.sandbox).map((c) => c.id))
     .map((id) => s.campaigns.find((c) => c.id === id))
     .filter(Boolean);
 
@@ -407,7 +412,7 @@ export function getProspect(id) {
 
 export function getDecisions({ limit = 4 } = {}) {
   const s = getState();
-  const sorted = [...s.decisions].sort((a, b) => b.ts - a.ts);
+  const sorted = s.decisions.filter((d) => !isSandbox(s, d.campaignId)).sort((a, b) => b.ts - a.ts);
   const items = sorted.slice(0, limit).map((d) => {
     const c = s.campaigns.find((x) => x.id === d.campaignId);
     return { ...d, campaignName: c ? c.name : "", campaignTag: c ? c.shortName : "" };
@@ -510,6 +515,15 @@ function normalizeCadence(c = {}) {
   return { maxTouches: clamp(c.maxTouches, 1, 6, 3), waitHours: clamp(c.waitHours, 24, 168, 72) };
 }
 
+/** The one person a single-target campaign is aimed at, as typed in. `notes` may be text (one fact per line) or a list. */
+function normalizeTarget(t = {}) {
+  const lines = Array.isArray(t.notes) ? t.notes : String(t.notes || "").split(/\r?\n/);
+  return {
+    name: String(t.name || "").trim().slice(0, 120), title: String(t.title || "").trim().slice(0, 160), organisation: String(t.organisation || "").trim().slice(0, 160),
+    email: String(t.email || "").trim().slice(0, 160), notes: lines.map((x) => String(x).trim()).filter(Boolean).slice(0, 20), real: !!t.real,
+  };
+}
+
 const APPROVAL_LEVELS = ["manual", "assisted", "autonomous"];
 
 // Approval policy per campaign: which actions need a human (three toggles) and how a human can be
@@ -590,7 +604,7 @@ export function createCampaign(values, { launch = false } = {}) {
     const name = values.name.trim();
     s.campaigns.push({
       id, name, shortName: name, status: launch ? "live" : "draft",
-      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), offer: (values.offer || "").trim(), description: (values.description || "").trim(),
+      owner: (values.owner || "").trim() || currentUser(), objective: (values.objective || "").trim(), offer: (values.offer || "").trim(), mode: values.mode === "single" ? "single" : "bulk", sourcing: values.sourcing === "synthetic" ? "synthetic" : "simulated-search", sandbox: !!values.sandbox, target: values.mode === "single" ? normalizeTarget(values.target) : null, description: (values.description || "").trim(),
       icpSummary: [(values.personas || []).join(" & "), (values.geography || []).join(", ")].filter(Boolean).join(" · "),
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
@@ -600,6 +614,16 @@ export function createCampaign(values, { launch = false } = {}) {
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
     initCampaignPrompts(s.campaigns[s.campaigns.length - 1], s.agents, currentUser());
+    const created = s.campaigns[s.campaigns.length - 1];
+    if (created.mode === "single" && created.target && created.target.name) {
+      // A single-target campaign is aimed at exactly the person entered: they become its one prospect.
+      const t = created.target;
+      const p = newProspect(created, { name: t.name, title: t.title, company: t.organisation, email: t.email || undefined }, { provider: "entered by a person", real: !created.sandbox || !!t.real, note: "Details typed in by a person" });
+      for (const note of t.notes) addFact(p, { text: note, source: "entered by a person", kind: "profile" });
+      p.sandboxHuman = !!created.sandbox;
+      s.prospects.push(p);
+      created.funnel.discovered += 1;
+    }
     // The brief written on the form becomes the campaign's first prompt; empty keeps the generated default.
     if ((values.brief || "").trim()) s.campaigns[s.campaigns.length - 1].systemPrompt.versions[0].text = values.brief.trim();
     if (launch) addEvent(s, { campaignId: id, type: "launch", text: `**${name}** launched by ${currentUser()}` });
