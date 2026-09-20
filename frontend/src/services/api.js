@@ -161,3 +161,8 @@ export const addKnowledge = (values) => post("/knowledge", values);
 export const attachKnowledge = (values) => post("/knowledge/attach", values);
 export const detachKnowledge = ({ campaignId, sourceId }) => post("/knowledge/detach", { campaignId, sourceId });
 export const testKnowledge = ({ campaignId, query }) => post("/knowledge/test", { campaignId, query });
+
+// ---------------------------------------------------------------- real contacts
+export const getContacts = () => get("/contacts");
+export const addContact = (values) => post("/contacts", values);
+export const removeContact = (id) => del(`/contacts/${id}`);

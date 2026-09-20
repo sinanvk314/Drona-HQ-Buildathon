@@ -102,6 +102,10 @@ export default function CreateCampaign({ params = {} }) {
   };
   const mode = v.mode === "single" ? "single" : "bulk";
   const single = mode === "single";
+  const dataReal = v.sourcing === "real";
+  const chooseData = (isReal) => {
+    setV((p) => ({ ...p, sourcing: isReal ? "real" : "simulated-search", channels: p.channels.filter((k) => (isReal ? k !== "linkedin" : k !== "voice")) }));
+  };
   const target = { name: "", title: "", organisation: "", email: "", ...(v.target || {}), notes: Array.isArray(v.target && v.target.notes) ? v.target.notes.join("\n") :(v.target && v.target.notes) || "" };
   const setTarget = (k, val) => {
     set("target", { ...target, [k]: val });
@@ -209,6 +213,51 @@ export default function CreateCampaign({ params = {} }) {
         </div>
 
         <div className="card" style={{ padding: 22 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Real or simulated data?</div>
+          <div className="field-hint" style={{ marginTop: 0, marginBottom: 12 }}>
+            {editId ? "This cannot be changed once the campaign exists." : "Simulated is safe for testing: an AI makes up the people and every reply, and nothing is sent. Real uses only people you have added by hand, and can send real email, texts and calls."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[
+              [false, "Simulated (AI)", "The people are made up by an AI acting as a search tool, and replies are simulated. Nothing is ever sent."],
+              [true, "Real", single ? "The person below is real. The SDR can email, text or call them for real, and reads their real replies." : "Prospects are chosen from the real contacts you added in the Dev tab. The SDR can email, text or call them for real."],
+            ].map(([isReal, label, body]) => (
+              <button
+                key={label} type="button" aria-pressed={dataReal === isReal} disabled={!!editId && dataReal !== isReal}
+                onClick={() => !editId && chooseData(isReal)}
+                style={{ textAlign: "left", padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${dataReal === isReal ? (isReal ? "var(--danger)" : "var(--accent)") : "var(--border-strong)"}`, background: dataReal === isReal ? (isReal ? "var(--danger-soft)" : "var(--accent-soft)") : "#fff", cursor: editId ? "default" : "pointer", opacity: editId && dataReal !== isReal ? 0.5 : 1, fontFamily: "inherit" }}
+              >
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{label}</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>{body}</div>
+              </button>
+            ))}
+          </div>
+          {dataReal && (
+            <div style={{ fontSize: 12.5, marginTop: 12, lineHeight: 1.6, color: "var(--text-2)" }}>
+              <strong>Safety:</strong> every message to a real person waits in Approvals for a human, and real sending must be switched on for this server (Settings shows what is connected). LinkedIn cannot be sent for real. {single ? "" : "Add contacts under Dev, Real contacts."}
+            </div>
+          )}
+          {!dataReal && !single && (
+            <div style={{ marginTop: 12 }}>
+              <Field label="How the people are made up" htmlFor="cc-sourcing" hint="The imitated search asks an AI to act as a people-search tool for any audience. The free generator only makes up companies.">
+                <select id="cc-sourcing" className="input" value={v.sourcing || "simulated-search"} onChange={(e) => set("sourcing", e.target.value)}>
+                  <option value="simulated-search">Imitated people search (AI, fictional people)</option>
+                  <option value="synthetic">Free generator (made-up companies)</option>
+                </select>
+              </Field>
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <Field label="Who are you looking for?" htmlFor="cc-kind" hint={v.audienceKind === "individuals" ? (dataReal ? "Individuals: no organisation is needed for each person." : "Individuals, including famous people and public figures. The AI may name well-known public figures using only widely known facts; every email is still a made-up address.") : "People who work at or belong to organisations: companies, colleges, clubs."}>
+              <select id="cc-kind" className="input" value={v.audienceKind || "organisations"} onChange={(e) => set("audienceKind", e.target.value)}>
+                <option value="organisations">People at organisations (companies, colleges, clubs)</option>
+                <option value="individuals">Individuals and public figures (famous people, creators)</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Campaign Name" htmlFor="cc-name" error={errors.name} hint="A short name managers will recognise on the dashboard and in reports.">
@@ -252,13 +301,18 @@ export default function CreateCampaign({ params = {} }) {
                 </Field>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <Field label="Organisation" htmlFor="cc-torg" error={errors.targetOrganisation} hint="Where they work or study.">
+                <Field label={v.audienceKind === "individuals" ? "Organisation or what they are known for (optional)" : "Organisation"} htmlFor="cc-torg" error={errors.targetOrganisation} hint="Where they work or study, or what they are known for.">
                   <input id="cc-torg" className={cls("targetOrganisation")} value={target.organisation} placeholder="Company, college, club..." onChange={(e) => setTarget("organisation", e.target.value)} />
                 </Field>
-                <Field label="Email" htmlFor="cc-temail" hint="Optional. Used for the calendar invite once a meeting is booked.">
-                  <input id="cc-temail" className="input" value={target.email} placeholder="Their email address" onChange={(e) => setTarget("email", e.target.value)} />
+                <Field label={dataReal ? "Email (or a phone number)" : "Email"} htmlFor="cc-temail" error={errors.targetEmail} hint={dataReal ? "A real address: the SDR will send to it, and the invite goes here." : "Optional. Used for the calendar invite once a meeting is booked."}>
+                  <input id="cc-temail" className={cls("targetEmail")} value={target.email} placeholder="Their email address" onChange={(e) => setTarget("email", e.target.value)} />
                 </Field>
               </div>
+              {dataReal && (
+                <Field label="Phone number" htmlFor="cc-tphone" hint="With the country code, for example +91 98765 43210. Needed for texts and calls.">
+                  <input id="cc-tphone" className="input" value={target.phone || ""} placeholder="Their number" onChange={(e) => setTarget("phone", e.target.value)} />
+                </Field>
+              )}
               <Field label="What is known about them" htmlFor="cc-tnotes" hint="One fact per line: things they have done, said or care about. The SDR may refer to these and to nothing else about them.">
                 <textarea id="cc-tnotes" className="input" rows={4} value={target.notes} placeholder="One thing you know about them per line" onChange={(e) => setTarget("notes", e.target.value)} />
               </Field>
@@ -296,12 +350,6 @@ export default function CreateCampaign({ params = {} }) {
             <Field label="Organisation Criteria" htmlFor="cc-company" hint="Facts about the organisation that must be true: its size, type or stage.">
               <input id="cc-company" className="input" placeholder="What must be true about the organisation" value={v.companyCriteria} onChange={(e) => set("companyCriteria", e.target.value)} />
             </Field>
-            <Field label="Where the prospects come from" htmlFor="cc-sourcing" hint="The imitated search asks an AI to act as a people-search tool: it returns realistic but fictional people for any audience, so you can test with anything. The free generator only makes up companies. Real data providers are on the roadmap.">
-              <select id="cc-sourcing" className="input" value={v.sourcing || "simulated-search"} onChange={(e) => set("sourcing", e.target.value)}>
-                <option value="simulated-search">Imitated people search (AI, fictional people)</option>
-                <option value="synthetic">Free generator (made-up companies)</option>
-              </select>
-            </Field>
             <Field label="Exclusion Criteria" htmlFor="cc-excl" hint="People or organisations to always skip. Anyone matching is rejected on sight.">
               <input id="cc-excl" className="input" placeholder="Who must never be contacted" value={v.exclusionCriteria} onChange={(e) => set("exclusionCriteria", e.target.value)} />
             </Field>
@@ -315,12 +363,15 @@ export default function CreateCampaign({ params = {} }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Field label="Channels" error={errors.channels} hint="Where the SDR may reach people. A channel that is turned off is never used.">
               <div style={{ display: "flex", gap: 8 }}>
-                {CHANNEL_KEYS.map((k) => (
-                  <button key={k} type="button" aria-pressed={v.channels.includes(k)} className={`chip ${v.channels.includes(k) ? "selected" : ""}`} onClick={() => toggleIn("channels", k)}>
-                    <Icon name={CHANNEL_ICON[k]} size={12} stroke={1.7} />
-                    {CHANNEL_LABELS[k]}
-                  </button>
-                ))}
+                {CHANNEL_KEYS.map((k) => {
+                  const blocked = (k === "voice" && !dataReal) ? "The Voice SDR only calls real people" : (k === "linkedin" && dataReal) ? "LinkedIn cannot be sent for real" : "";
+                  return (
+                    <button key={k} type="button" disabled={!!blocked} title={blocked || undefined} aria-pressed={v.channels.includes(k)} className={`chip ${v.channels.includes(k) ? "selected" : ""}`} style={blocked ? { opacity: 0.45, cursor: "not-allowed" } : undefined} onClick={() => toggleIn("channels", k)}>
+                      <Icon name={CHANNEL_ICON[k]} size={12} stroke={1.7} />
+                      {CHANNEL_LABELS[k]}
+                    </button>
+                  );
+                })}
               </div>
             </Field>
             {!single && (

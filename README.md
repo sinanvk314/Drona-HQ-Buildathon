@@ -237,6 +237,11 @@ All go in `backend/.env`. Every one has a working default. See `backend/.env.exa
 | `SIM_MS_PER_HOUR` | `3000` | Real milliseconds per simulated hour (follow-up waits, working hours, daily limit). `3600000` = real time |
 | `ENFORCE_LIMITS` | `on` | `off` stops working hours, the daily limit and the frequency cap from holding outreach back |
 | `SIM_REPLY_CHANCE` | `0.08` | Chance per tick that a contacted prospect replies (replies are simulated) |
+| `REAL_SENDING` | `off` | Master switch for real email, texts and calls (see "Sending real messages") |
+| `REAL_AUTO_SEND` | `off` | `on` lets approval levels skip the human for real people. Leave off. |
+| `REAL_SEND_ALLOWLIST` | empty | Only these addresses or numbers may receive real messages |
+| `PUBLIC_URL` | empty | Your deployed address, for Twilio callbacks |
+| `GMAIL_*`, `TWILIO_*` | empty | Credentials for real email, texts and calls |
 | `MEETING_TIMEZONE` | `Asia/Kolkata` | Time zone in which meeting times are offered and shown |
 | `MEETING_MINUTES` | `30` | Length of a booked meeting |
 | `DATA_FILE` | `./data/state.json` | Where the JSON datastore lives (point at a persistent disk when deploying) |
@@ -370,11 +375,36 @@ Gemini 16/16 (100%). The rule engine's misses are the cases that need judgment, 
 go to the LLM. Caveats: the set is small and was labelled by us, so treat 100% as "no regressions on known cases", not
 as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 
+## Sending real messages (Gmail, texts, calls)
+
+Everything is **off by default**. A campaign only sends for real when all of these are true: its data is set to **Real** (the people are contacts you added by hand in Dev, Real contacts, or one person you typed in), `REAL_SENDING=on`, the channel's credentials are set, and a human approved the message. Simulated campaigns and Dev sandboxes never send anything.
+
+**Safety built in**
+- Every message to a real person waits in **Approvals** until a human approves it (`REAL_AUTO_SEND=on` lets the campaign's approval level decide instead: leave it off for real people).
+- `REAL_SEND_ALLOWLIST` (optional) restricts real messages to addresses or numbers you list. **Use it while testing**, with your own address and number.
+- Every real email ends with an opt-out line, and a reply of "unsubscribe" or "stop" puts the person on the do-not-contact list.
+- A message that cannot be delivered is shown as **NOT DELIVERED** with the reason, never as sent.
+- For real campaigns set `SIM_MS_PER_HOUR=3600000` so working hours, waits and follow-ups run on real time, not the demo clock.
+
+**Email (Gmail API)** needs a Google Cloud OAuth client and a refresh token. About 10 minutes:
+1. Go to console.cloud.google.com, create a project, and **enable the Gmail API** (APIs & Services, Library).
+2. APIs & Services, **OAuth consent screen**: choose External, fill the basics, and add your own Gmail address as a **Test user**.
+3. Credentials, **Create credentials, OAuth client ID**, type **Web application**. Under Authorised redirect URIs add `https://developers.google.com/oauthplayground`. Copy the **client ID** and **client secret**.
+4. Open developers.google.com/oauthplayground. Click the gear, tick **Use your own OAuth credentials**, and paste the client ID and secret. In Step 1 enter the scopes `https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly`, click Authorize APIs, and sign in as the Gmail account that will send. In Step 2 click **Exchange authorization code for tokens** and copy the **refresh token**.
+5. Set on the server: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, and `GMAIL_SENDER` (that Gmail address). While the Google app is in Testing mode the refresh token expires after 7 days: repeat step 4 to renew it.
+
+**Texts and calls (Twilio)**: create a Twilio account, buy or verify a number, and set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` (and `TWILIO_VOICE_FROM` if different). Set `PUBLIC_URL` to your deployed address. Then in the Twilio console, on the number: **Messaging, A message comes in**, webhook `POST https://<your-app>/webhooks/twilio/sms`. Calls need nothing more: the server tells Twilio where to call back for each call. Twilio trial accounts can only reach verified numbers.
+
+**The Voice SDR** places a real call, speaks with Twilio's text-to-speech, listens with its speech recognition, and decides each reply through the same engine chain as the other agents (Gemini, with a plain fallback). Someone who asks not to be called goes on the do-not-contact list; someone who wants more is handed to a human to book the meeting. It is only ever used by **Real** campaigns, and the platform's Voice channel and Voice SDR agent must be switched on in Settings first.
+
+Settings, Integrations shows what is actually connected. `docs/SYSTEM_GUIDE.md` section 23 explains how it works.
+
 ### Trying it as a person: the Dev tab
 
 Open **Dev** in the sidebar. It has four tools, none of which touch your real campaigns (a test run never appears in the dashboard, approvals or journal):
 
 - **Judge sandbox.** Enter a real person (name, role, organisation, what is known about them), what the SDR should achieve and what is being offered. Press **Run the SDR**: it researches them, plans and writes the first message. Then *you* play that person: type replies in your own words. Ask a question, ask for another time, or say no. The SDR offers real times inside the rep's working hours, reads which one you pick, books it and produces a calendar invite (`.ics`). A scorecard says whether a meeting was booked, whether it respected the rep's hours and whether anything unsupported was said, and you can rate the run.
+- **Real contacts.** The real people (name, role, email, phone, what is known) that a Real campaign draws from. Famous people work too: add the address you actually have.
 - **Search playground.** Try the imitated people search on any audience (for example student leaders at law colleges) and judge how believable the results are. Nothing is saved.
 - **Real-data tests.** Enter real people with the answer you expect (should they qualify?), pick a campaign and see how often its ICP agent agrees.
 - **Runtime.** What is in force on the server right now: engines, key, daily cap, clock, time zone.
@@ -396,6 +426,7 @@ A campaign can also be aimed at **one specific person** instead of an audience (
 - Prompt versioning with per-campaign pinning, a versioned campaign system prompt, side-by-side compare and roll-back, and a change log; the versions in force are recorded on every decision.
 - **One SDR, not seven bots:** a shared Prospect Dossier every agent reads and writes, a real Research agent, and an SDR Blueprint on each campaign page showing the whole pipeline.
 - **Meetings for real:** the SDR offers real times inside the rep's hours, understands the reply (a pick, a decline or a counter-offer), books the slot without double-booking the rep, and produces a calendar invite.
+- **Real or simulated data, per campaign.** Real campaigns use only contacts you added, and can send real email (Gmail API), texts and calls (Twilio, with a Voice SDR), always through approval. Audiences can be individuals and public figures, not only people at companies.
 - **One-person campaigns** and the **Dev tab** (above): a real person can play the prospect and see whether the SDR books a meeting.
 - **Analytics that explain the prompts:** each campaign gets a health verdict with what to try, and each agent's success rate is split by campaign and by the prompt version it ran with. Saving a campaign prompt needs a message (like a commit message), and any decision's exact prompt versions can be opened.
 - **Knowledge library** across campaigns with a retrieval tester, and an Agents page that shows each agent's role, fixed instruction and the prompt it would receive for a campaign.
@@ -404,6 +435,7 @@ A campaign can also be aimed at **one specific person** instead of an audience (
 - Failure handling: bad or empty model output, HTTP errors and quota exhaustion fall back to the rule engine without stopping the loop.
 
 **Simulated (no real network calls)**
+- Real sending is built and tested against fake Gmail and Twilio servers; it has **not** been run against the live services in this repo, so try it with `REAL_SEND_ALLOWLIST` set to your own address first.
 - Prospect discovery is an AI acting as a people-search tool (it invents realistic, fictional people for any audience, with `.example` emails) or a free generator of made-up companies. Real providers (Apollo and similar) are on the roadmap.
 - Sending email / LinkedIn / SMS and receiving replies change state only; replies are generated from a fixed mix of
   sample messages (in the Dev sandbox a real person types them). A booked meeting is a record and a downloadable `.ics` invite, not an entry in a live calendar.

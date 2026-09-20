@@ -32,6 +32,9 @@ Today nothing leaves the server: sends and replies are simulated, and prospects 
 - **Done when:** an approved email arrives in a test inbox from the rep's address, a reply appears in the prospect's conversation, and an unsubscribe reply suppresses the person.
 - **Read section 7 first.**
 
+### 1.1b Real sending: what is done and what to verify
+- **Done:** Gmail API (send, threads, replies, invite attachment), Twilio SMS with a signed reply webhook, and a Voice SDR over Twilio, for Real campaigns only, always through approval. **Not verified:** none of it has run against the live Gmail or Twilio in this repo (only fake servers), so first run it with `REAL_SEND_ALLOWLIST` set to your own address and number. **Not done:** LinkedIn, delivery/bounce tracking beyond the API's response, per-recipient time zones, and unsubscribe links (today: a reply of "unsubscribe" or "stop").
+
 ### 1.2 SMS (S to M)
 - Twilio (a trial account only sends to verified numbers). Same place as email: `recordTouch`. Add inbound webhook for replies.
 

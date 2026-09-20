@@ -9,7 +9,8 @@ export function validateCampaign(v, launch) {
     if (!v.objective || !v.objective.trim()) e.objective = "Enter the campaign objective.";
     if (!v.offer || !v.offer.trim()) e.offer = "Describe what this campaign offers.";
     if (!v.target || !v.target.name || !v.target.name.trim()) e.targetName = "Enter the person's name.";
-    if (!v.target || !v.target.organisation || !v.target.organisation.trim()) e.targetOrganisation = "Enter their organisation.";
+    if (v.audienceKind !== "individuals" && (!v.target || !v.target.organisation || !v.target.organisation.trim())) e.targetOrganisation = "Enter their organisation.";
+    if (v.sourcing === "real" && (!v.target || !((v.target.email || "").trim() || (v.target.phone || "").trim()))) e.targetEmail = "A real person needs an email address or a phone number.";
     if (!v.channels || !v.channels.length) e.channels = "Select at least one channel.";
     return e;
   }

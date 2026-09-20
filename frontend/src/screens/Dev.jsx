@@ -4,9 +4,11 @@ import SandboxTab from "../components/dev/SandboxTab.jsx";
 import SearchTab from "../components/dev/SearchTab.jsx";
 import TestsTab from "../components/dev/TestsTab.jsx";
 import RuntimeTab from "../components/dev/RuntimeTab.jsx";
+import ContactsTab from "../components/dev/ContactsTab.jsx";
 
 const TABS = [
   { key: "sandbox", label: "Judge sandbox", blurb: "Play the prospect yourself and see whether the SDR books a proper meeting." },
+  { key: "contacts", label: "Real contacts", blurb: "The real people a Real campaign can email, text or call." },
   { key: "search", label: "Search playground", blurb: "Try the imitated people search on any audience." },
   { key: "tests", label: "Real-data tests", blurb: "Check the ICP agent against people you already know the answer for." },
   { key: "runtime", label: "Runtime", blurb: "What is in force on this server right now." },
@@ -24,9 +26,10 @@ export default function Dev() {
               <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`chip ${tab === t.key ? "selected" : ""}`} onClick={() => setTab(t.key)}>{t.label}</button>
             ))}
           </div>
-          <div className="field-hint" style={{ marginTop: 8 }}>{current.blurb} Nothing here appears in the dashboard, approvals or journal of real campaigns.</div>
+          <div className="field-hint" style={{ marginTop: 8 }}>{current.blurb}{tab === "sandbox" || tab === "search" || tab === "tests" ? " Nothing here appears in the dashboard, approvals or journal of real campaigns." : ""}</div>
         </div>
         {tab === "sandbox" && <SandboxTab />}
+        {tab === "contacts" && <ContactsTab />}
         {tab === "search" && <SearchTab />}
         {tab === "tests" && <TestsTab />}
         {tab === "runtime" && <RuntimeTab />}

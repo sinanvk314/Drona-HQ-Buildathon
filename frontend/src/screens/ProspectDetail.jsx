@@ -229,7 +229,7 @@ export default function ProspectDetail({ params }) {
                     }}
                   >
                     {m.text}
-                    <div style={{ fontSize: 10.5, marginTop: 5, opacity: out ? 0.75 : 1, color: out ? "#fff" : "var(--text-3)" }}>{m.when}{m.channel ? ` · ${m.channel}` : ""}{out && m.sender ? ` · sent as ${m.sender}` : ""}</div>
+                    <div style={{ fontSize: 10.5, marginTop: 5, opacity: out ? 0.75 : 1, color: out ? "#fff" : "var(--text-3)" }}>{m.when}{m.channel ? ` · ${m.channel}` : ""}{out && m.sender ? ` · sent as ${m.sender}` : ""}{out ? (m.delivery ? (m.delivery.status === "sent" ? ` · really sent via ${m.delivery.provider}` : m.delivery.status === "failed" ? ` · NOT DELIVERED: ${m.delivery.error}` : " · sending…") : (m.channel === "voice" ? " · phone call" : " · simulated, not really sent")) : ""}</div>
                   </div>
                 );
               })}
