@@ -139,3 +139,13 @@ test("completing a campaign withdraws its pending approvals and hides its prospe
   assert.ok(data.getProspects({ includeClosed: true }).some((x) => x.campaignId === c.id));
   assert.throws(() => data.decideApproval("ap_close_test", { action: "approve" }), /already been handled|finished/);
 });
+
+test("an archived campaign is gone from the dashboard, its feed and the journal", () => {
+  const s = getState();
+  const c = s.campaigns.find((x) => x.status === "live" && !x.sandbox);
+  data.completeCampaign(c.id);
+  data.archiveCampaign(c.id);
+  assert.ok(!data.getCommandCenter().campaigns.some((x) => x.id === c.id));
+  assert.ok(!data.getCommandCenter().feed.some((e) => e.campaignId === c.id));
+  assert.ok(!data.getDecisions({ limit: 500 }).items.some((d) => d.campaignId === c.id));
+});

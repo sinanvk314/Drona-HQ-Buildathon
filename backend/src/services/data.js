@@ -123,6 +123,7 @@ function prospectRow(s, p) {
   };
 }
 
+const isArchived = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && c.status === "archived"); };
 const isSandbox = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && c.sandbox); };
 // A finished campaign has nothing left to approve: its drafts must never be sent, so they do not count or show.
 const isClosed = (s, campaignId) => { const c = s.campaigns.find((x) => x.id === campaignId); return !!(c && (c.status === "completed" || c.status === "archived")); };
@@ -178,7 +179,8 @@ export function getShellState() {
 
 export function getCommandCenter() {
   const s = getState();
-  const cs = s.campaigns.filter((c) => !c.sandbox);
+  // Archived campaigns are out of the way: they neither count toward nor appear on the dashboard.
+  const cs = s.campaigns.filter((c) => !c.sandbox && c.status !== "archived");
   const sum = (k) => cs.reduce((a, c) => a + c.funnel[k], 0);
   const live = cs.filter((c) => c.status === "live").length;
   const paused = cs.filter((c) => c.status === "paused").length;
@@ -205,7 +207,7 @@ export function getCommandCenter() {
     campaigns: cs.map((c) => cardOf(s, c)),
     funnel: STAGE_KEYS.map((k) => ({ key: k, label: STAGE_LABELS[k], value: sum(k) })),
     feed: s.events
-      .filter((e) => e.featured && !isSandbox(s, e.campaignId))
+      .filter((e) => e.featured && !isSandbox(s, e.campaignId) && !isArchived(s, e.campaignId))
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 6)
       .map((e) => {
@@ -444,7 +446,7 @@ export function getProspect(id) {
 
 export function getDecisions({ limit = 4 } = {}) {
   const s = getState();
-  const sorted = s.decisions.filter((d) => !isSandbox(s, d.campaignId)).sort((a, b) => b.ts - a.ts);
+  const sorted = s.decisions.filter((d) => !isSandbox(s, d.campaignId) && !isArchived(s, d.campaignId)).sort((a, b) => b.ts - a.ts);
   const items = sorted.slice(0, limit).map((d) => {
     const c = s.campaigns.find((x) => x.id === d.campaignId);
     return { ...d, campaignName: c ? c.name : "", campaignTag: c ? c.shortName : "" };
