@@ -11,7 +11,9 @@ import { generateProspect } from "./prospectGenerator.js";
 import * as engine from "./agentEngine/index.js";
 import { classifyReply } from "./replyRouter.js";
 import { recordAvoided } from "./usage.js";
-import { recordTouch } from "./outreach.js";
+import { recordTouch, touchLimit } from "./outreach.js";
+import { outreachAllowed } from "./limits.js";
+import { hoursToMs } from "./simTime.js";
 import { shortDate } from "../utils/format.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
@@ -134,13 +136,74 @@ async function runIcpFitment(s, campaign) {
   }
 }
 
+const HOLD_LOG_INTERVAL_MS = 60 * 1000;
+
+// An outreach limit (working hours, daily limit, frequency cap) is holding this prospect back. One Decision Journal
+// entry per reason, not one per tick, and no agent is called while it holds.
+function holdOutreach(s, campaign, prospect, reason) {
+  const key = reason.replace(/\s*\(.*$/, "").trim();
+  prospect.nextStep = `Held: ${key}`;
+  // One journal entry per campaign and reason for a while, not one per prospect, so a closed window does not flood it.
+  const last = campaign.lastHold;
+  if (last && last.key === key && Date.now() - last.ts < HOLD_LOG_INTERVAL_MS) return;
+  campaign.lastHold = { key, ts: Date.now() };
+  pushDecision(s, {
+    kind: "blocked",
+    campaignId: campaign.id,
+    prospectId: prospect.id,
+    agent: "Outreach Limits",
+    harness: "policy",
+    engine: "policy",
+    headline: `Outreach held — ${campaign.shortName || campaign.name}: ${key.toLowerCase()}`,
+    summary: `Outreach in **${campaign.name}** is held: ${reason}. Prospects wait and go out when the limit clears.`,
+    evidence: [reason, `First affected: ${prospect.name}, ${prospect.company}`],
+    instruction: "Working hours, the daily limit and the contact-frequency cap are hard limits that no agent can override.",
+    finalAction: "Wait until the limit clears. No agent call was made.",
+  });
+}
+
+// Outreach Strategy Agent: plans which channels, in what order and how long to wait. Runs once per qualified prospect,
+// before any message is drafted, and only over the channels that are enabled right now.
+async function runStrategy(s, campaign) {
+  if (!agentEnabled(s, "strategy")) return;
+  const allowedChannels = campaign.channels.filter((k) => channelEnabled(s, k));
+  if (!allowedChannels.length) return;
+  const strategyAgent = agentById(s, "strategy");
+  const batch = s.prospects
+    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && !p.plan && p.nextStep !== "See Decision Journal")
+    .slice(0, config.schedulerBatchSize);
+
+  for (const prospect of batch) {
+    try {
+      if (!checkConflict(s, prospect).ok) continue; // the Personalisation step records the block
+      const result = await engine.planOutreach({ campaign, prospect, strategyAgent, allowedChannels });
+      prospect.plan = { sequence: result.sequence, waitHours: result.waitHours, reasoning: result.reasoning, engine: result.engine, harness: result.harness, ts: Date.now() };
+      pushDecision(s, {
+        kind: "strategy",
+        campaignId: campaign.id,
+        prospectId: prospect.id,
+        agent: "Outreach Strategy Agent",
+        harness: result.harness,
+        engine: result.engine,
+        headline: `Plan — ${prospect.name}, ${prospect.company}: ${result.sequence.join(" → ")}`,
+        summary: `Outreach Strategy Agent planned **${prospect.name}**, ${prospect.company}: ${result.sequence.join(" → ")}, ${result.waitHours}h between touches`,
+        evidence: [result.reasoning, `Enabled channels for this campaign: ${allowedChannels.join(", ")}`],
+        instruction: result.instruction,
+        finalAction: `Personalise the first ${result.sequence[0]} touch`,
+      });
+    } catch (e) {
+      console.warn(`[scheduler] Outreach Strategy failed for ${prospect.id}:`, e.message);
+    }
+  }
+}
+
 async function runPersonalisation(s, campaign) {
   if (!agentEnabled(s, "personalisation")) return;
   const activeChannels = campaign.channels.filter((k) => channelEnabled(s, k));
   if (!activeChannels.length) return;
   const personalisationAgent = agentById(s, "personalisation");
   const batch = s.prospects
-    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval" && p.nextStep !== "See Decision Journal")
+    .filter((p) => p.campaignId === campaign.id && p.stage === "qualified" && p.nextStep !== "Awaiting approval" && p.nextStep !== "See Decision Journal" && (p.plan || !agentEnabled(s, "strategy")))
     .slice(0, config.schedulerBatchSize);
 
   for (const prospect of batch) {
@@ -167,7 +230,23 @@ async function runPersonalisation(s, campaign) {
         continue;
       }
 
-      const result = await engine.draftOutreach({ campaign, prospect, personalisationAgent });
+      // The Strategy agent chose the channel. If it has since been paused, plan again rather than send on it.
+      const planned = prospect.plan && prospect.plan.sequence[0];
+      if (planned && !channelEnabled(s, planned)) {
+        prospect.plan = null;
+        continue;
+      }
+      // If this touch would go out without a human, the hard limits must allow it now (no LLM call is spent if not).
+      const goesOutUnattended = !campaign.approvals.firstOutreach || autoApproval(s, campaign, prospect, "first").ok;
+      if (goesOutUnattended) {
+        const gate = outreachAllowed(s, campaign, prospect);
+        if (!gate.ok) {
+          holdOutreach(s, campaign, prospect, gate.reason);
+          continue;
+        }
+      }
+
+      const result = await engine.draftOutreach({ campaign, prospect, personalisationAgent, channel: planned || undefined });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
@@ -290,10 +369,15 @@ async function runConversation(s, campaign) {
     (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.conversation.every((c) => c.dir === "out")
   );
 
-  for (const prospect of contacted.slice(0, config.schedulerBatchSize)) {
-    if (Math.random() > 0.35) continue; // not every prospect replies on every tick
+  let handled = 0;
+  for (const prospect of contacted) {
+    if (handled >= config.schedulerBatchSize) break; // caps the agent calls per tick, not who may reply
+    if (Math.random() >= config.simReplyChance) continue; // most prospects stay silent on any given tick
+    handled += 1;
+    const replyChannel = (prospect.touches.at(-1) || {}).channel || "email";
     const { text: replyText, kind: replyKind } = simulateReply();
-    prospect.conversation.push({ dir: "in", text: replyText, when: "Today" });
+    prospect.conversation.push({ dir: "in", text: replyText, when: "Today", channel: replyChannel });
+    prospect.nextTouchTs = null; // a reply ends the follow-up sequence
 
     // Matching before judgment: clear-cut opt-outs and auto-replies are settled by embedding
     // similarity to canonical examples, with no LLM call. Everything else goes to the agent below.
@@ -304,7 +388,7 @@ async function runConversation(s, campaign) {
       continue;
     }
 
-    prospect.history.push({ kind: "email", text: `Reply received — ${replyKind}`, when: "Today" });
+    prospect.history.push({ kind: replyChannel === "email" ? "email" : "chat", text: `Reply received on ${replyChannel} — ${replyKind}`, when: "Today" });
     prospect.stage = "engaged";
     campaign.funnel.engaged += 1;
     campaign.outreach.replies += 1;
@@ -314,6 +398,8 @@ async function runConversation(s, campaign) {
       if (result.action === "escalate") {
         pushApproval(s, {
           type: "escalation",
+          touchKind: "reply",
+          channel: replyChannel,
           prospectId: prospect.id,
           campaignId: campaign.id,
           name: prospect.name,
@@ -322,7 +408,7 @@ async function runConversation(s, campaign) {
           tagTone: "danger",
           summary: `Escalation — **${prospect.name}** raised an objection`,
           recommendation: { title: "Respond personally — this needs a compliance-accurate answer.", body: result.reasoning },
-          draft: { subject: `Re: ${prospect.company}`, body: "Draft this reply personally using the objection-handling playbook." },
+          draft: { subject: `Re: ${prospect.company}`, body: result.draft || "Draft this reply personally using the objection-handling playbook." },
           nextActionText: "Reply personally using the objection-handling playbook.",
           source: `Escalated by Conversation Agent · ${result.harness}`,
         });
@@ -333,6 +419,8 @@ async function runConversation(s, campaign) {
         if (campaign.approvals.meetingTime && !autoApproval(s, campaign, prospect, "meeting").ok) {
           pushApproval(s, {
             type: "meeting",
+            touchKind: "reply",
+            channel: replyChannel,
             prospectId: prospect.id,
             campaignId: campaign.id,
             name: prospect.name,
@@ -341,7 +429,7 @@ async function runConversation(s, campaign) {
             tagTone: "neutral",
             summary: `Book meeting — **${prospect.name}**, ${prospect.company}`,
             recommendation: { title: "Confirm the proposed time.", body: result.reasoning },
-            draft: { subject: "Meeting time", body: "Confirming the proposed meeting time and sending a calendar invite." },
+            draft: { subject: "Meeting time", body: result.draft || "Confirming the proposed meeting time and sending a calendar invite." },
             nextActionText: "Confirm the meeting time and send a calendar invite.",
             source: `Recommended by Conversation Agent · ${result.harness}`,
           });
@@ -371,6 +459,8 @@ async function runConversation(s, campaign) {
       } else {
         pushApproval(s, {
           type: "followup",
+          touchKind: "reply",
+          channel: replyChannel,
           prospectId: prospect.id,
           campaignId: campaign.id,
           name: prospect.name,
@@ -379,7 +469,7 @@ async function runConversation(s, campaign) {
           tagTone: "neutral",
           summary: `Send follow-up email — **${prospect.name}**, ${prospect.company}`,
           recommendation: { title: "Send a contextual follow-up.", body: result.reasoning },
-          draft: { subject: `Re: ${prospect.company}`, body: "Thanks for the reply — following up with the details requested." },
+          draft: { subject: `Re: ${prospect.company}`, body: result.draft || "Thanks for the reply — following up with the details requested." },
           nextActionText: "Send a follow-up addressing what the prospect asked.",
           source: `Recommended by Conversation Agent · ${result.harness}`,
         });
@@ -392,7 +482,128 @@ async function runConversation(s, campaign) {
   }
 }
 
-async function tick() {
+// Follow-up Agent: cadence for contacted prospects who have gone quiet. WHEN is policy (the plan, the wait, the touch
+// limit, opt-outs, working hours, daily limit); HOW (the message and its angle) is the agent's call.
+async function runFollowUp(s, campaign) {
+  if (!agentEnabled(s, "followup")) return;
+  const followupAgent = agentById(s, "followup");
+  const now = Date.now();
+  const silent = s.prospects.filter(
+    (p) => p.campaignId === campaign.id && p.stage === "contacted" && p.plan && p.conversation.every((c) => c.dir === "out")
+  );
+
+  // 1. Sequences that have run their course with no reply are closed out, and the reason is recorded.
+  for (const p of silent) {
+    const waitMs = hoursToMs(p.plan.waitHours || campaign.cadence.waitHours);
+    if (!p.closedOut && p.touches.length >= touchLimit(campaign, p) && p.lastTs + waitMs <= now) {
+      p.closedOut = true;
+      p.nextStep = `Closed: no reply after ${p.touches.length} touches`;
+      pushDecision(s, {
+        kind: "rejected",
+        campaignId: campaign.id,
+        prospectId: p.id,
+        agent: "Follow-up Agent",
+        harness: "policy",
+        engine: "policy",
+        headline: `Sequence complete — ${p.name}, ${p.company}`,
+        summary: `No reply from **${p.name}**, ${p.company} after ${p.touches.length} touches; follow-ups stopped`,
+        evidence: [`Touches: ${p.touches.map((t) => t.channel).join(" → ")}`, `Campaign touch limit: ${campaign.cadence.maxTouches}`],
+        instruction: "Stop after the campaign's touch limit, or on any reply or opt-out.",
+        finalAction: "Stop follow-ups and leave the prospect in the funnel as contacted",
+      });
+    }
+  }
+
+  // 2. Follow-ups that are due.
+  const due = silent.filter((p) => !p.closedOut && p.nextTouchTs && p.nextTouchTs <= now && p.nextStep === "Awaiting reply");
+  for (const prospect of due.slice(0, config.schedulerBatchSize)) {
+    try {
+      // Re-check the suppression list: someone may have been added mid-campaign.
+      const conflict = checkConflict(s, prospect);
+      if (!conflict.ok) {
+        prospect.nextTouchTs = null;
+        prospect.nextStep = "Stopped: on the suppression list";
+        pushDecision(s, {
+          kind: "blocked",
+          campaignId: campaign.id,
+          prospectId: prospect.id,
+          agent: "Follow-up Agent",
+          harness: "policy",
+          engine: "policy",
+          headline: `Follow-ups stopped — ${prospect.name}, ${prospect.company}`,
+          summary: `Follow-ups to **${prospect.name}**, ${prospect.company} stopped: ${conflict.text}`,
+          evidence: [conflict.text],
+          conflict: { ok: false, text: conflict.text },
+          instruction: "Suppression and conflict rules are re-checked before every follow-up.",
+          finalAction: "Stop the sequence",
+        });
+        continue;
+      }
+
+      const channel = prospect.plan.sequence[prospect.touches.length];
+      if (!channel || !channelEnabled(s, channel)) continue; // that channel is paused: wait rather than switch it silently
+
+      const needsApproval = !!campaign.approvals.firstOutreach;
+      const goesOutUnattended = !needsApproval || autoApproval(s, campaign, prospect, "followup").ok;
+      if (goesOutUnattended) {
+        const gate = outreachAllowed(s, campaign, prospect);
+        if (!gate.ok) {
+          holdOutreach(s, campaign, prospect, gate.reason);
+          prospect.nextStep = "Awaiting reply"; // still due: retried on a later tick
+          continue;
+        }
+      }
+
+      const touchNumber = prospect.touches.length; // follow-up number (the opening was touch 1)
+      const isLast = prospect.touches.length + 1 >= touchLimit(campaign, prospect);
+      const result = await engine.draftFollowUp({ campaign, prospect, followupAgent, channel, touchNumber, isLast });
+
+      pushDecision(s, {
+        kind: "strategy",
+        campaignId: campaign.id,
+        prospectId: prospect.id,
+        agent: "Follow-up Agent",
+        harness: result.harness,
+        engine: result.engine,
+        headline: `Follow-up ${touchNumber} on ${channel} — ${prospect.name}, ${prospect.company}`,
+        summary: `Follow-up Agent drafted follow-up ${touchNumber} on ${channel} for **${prospect.name}**, ${prospect.company}${isLast ? " (last touch)" : ""}`,
+        evidence: [result.reasoning, `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}: ${prospect.touches.map((t) => t.channel).join(" → ")}`],
+        retrieved: result.retrieved,
+        instruction: result.instruction,
+        finalAction: goesOutUnattended ? `Send the ${channel} follow-up` : "Queue the follow-up for human approval",
+      });
+
+      if (!goesOutUnattended) {
+        pushApproval(s, {
+          type: "followup",
+          touchKind: "cadence",
+          channel,
+          prospectId: prospect.id,
+          campaignId: campaign.id,
+          name: prospect.name,
+          company: prospect.company,
+          tag: `Send follow-up ${touchNumber}`,
+          tagTone: "neutral",
+          summary: `Send follow-up ${touchNumber} on ${channel} — **${prospect.name}**, ${prospect.company}`,
+          recommendation: { title: `No reply after ${prospect.touches.length} touch${prospect.touches.length === 1 ? "" : "es"}; follow up on ${channel}.`, body: result.reasoning },
+          draft: { subject: result.subject, body: result.body },
+          nextActionText: `Send the ${channel} follow-up${isLast ? " (last touch)" : ""}.`,
+          source: `Recommended by Follow-up Agent · ${result.harness}`,
+        });
+        prospect.lastAction = "Follow-up drafted, {ago}";
+        prospect.nextStep = "Awaiting approval";
+        prospect.nextTouchTs = null; // set again when the follow-up is approved and sent
+      } else {
+        recordTouch(s, campaign, prospect, { channel, kind: "followup", subject: result.subject, body: result.body });
+      }
+      prospect.lastTs = Date.now();
+    } catch (e) {
+      console.warn(`[scheduler] Follow-up failed for ${prospect.id}:`, e.message);
+    }
+  }
+}
+
+export async function tick() {
   const s = getState();
   if (s.killSwitch.active) return;
 
@@ -400,8 +611,10 @@ async function tick() {
     if (!isRunning(s, campaign)) continue; // Draft/Paused/Completed/Archived campaigns never progress.
     await runLeadResearch(s, campaign);
     await runIcpFitment(s, campaign);
+    await runStrategy(s, campaign);
     await runPersonalisation(s, campaign);
     await runConversation(s, campaign);
+    await runFollowUp(s, campaign);
     campaign.modifiedTs = Date.now();
   }
 }

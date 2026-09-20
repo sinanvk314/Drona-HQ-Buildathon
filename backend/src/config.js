@@ -67,6 +67,9 @@ export const config = {
   // cannot be shown in a demo, so one simulated hour lasts this many real milliseconds (3000 = a simulated day is
   // 72 seconds). Set it to 3600000 for real time. The daily limit and working hours use the same clock.
   simMsPerHour: Number(process.env.SIM_MS_PER_HOUR) || 3000,
+  // Chance per scheduler tick that a contacted prospect replies. Replies are simulated until a mailbox is connected;
+  // 0 means nobody ever replies (useful for testing the follow-up cadence).
+  simReplyChance: process.env.SIM_REPLY_CHANCE !== undefined ? Number(process.env.SIM_REPLY_CHANCE) : 0.08,
   // "off" stops the scheduler from holding outreach back for the daily limit, working hours and frequency cap.
   enforceLimits: (process.env.ENFORCE_LIMITS || "on").toLowerCase() !== "off",
   // Cost control. Every LLM call is counted per day (data/usage.json). Past LLM_DAILY_CALL_CAP the

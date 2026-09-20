@@ -36,6 +36,7 @@ export function recordTouch(state, campaign, prospect, { channel, kind, subject 
     prospect.lastAction = `Follow-up ${n - 1} sent on ${channel}, {ago}`;
   }
   prospect.nextStep = "Awaiting reply";
+  prospect.heldKey = null;
   prospect.lastTs = ts;
 
   // Schedule the next follow-up on the simulated clock, or stop the sequence.

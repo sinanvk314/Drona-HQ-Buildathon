@@ -163,7 +163,8 @@ export function normalizeConversation(o) {
     action = /escalat/.test(text) ? "escalate" : /meeting|book|schedul/.test(text) ? "meeting" : /follow/.test(text) ? "followup" : "";
   }
   if (!action) throw new DronaHQError("conversation output has no recognisable action");
-  return { action, reasoning: o.reasoning || o.handoff_note || "" };
+  const draft = typeof o.reply_draft === "string" ? o.reply_draft.trim() : "";
+  return { action, reasoning: o.reasoning || o.handoff_note || "", draft };
 }
 
 // ---- payloads ---------------------------------------------------------------------------------

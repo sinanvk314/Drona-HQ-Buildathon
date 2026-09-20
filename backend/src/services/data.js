@@ -172,6 +172,7 @@ function formValues(c) {
     personaOptions: union(PERSONA_OPTIONS, c.personas), personas: [...c.personas],
     companyCriteria: c.companyCriteria, exclusionCriteria: c.exclusionCriteria, channels: [...c.channels],
     qualificationPrompt: c.qualificationPrompt, dailyLimit: c.dailyLimit, workingHours: c.workingHours,
+    cadence: { ...(c.cadence || { maxTouches: 3, waitHours: 72 }) },
     approvals: { ...c.approvals }, sources: c.sources.map(sourceView),
   };
 }
@@ -307,6 +308,13 @@ export function archiveCampaign(id) {
   return withState((s) => transition(s, id, "archived", null));
 }
 
+// Follow-up cadence: how many touches a prospect gets in total (the opening message included) and how long to wait
+// between them, in simulated hours (see services/simTime.js).
+function normalizeCadence(c = {}) {
+  const clamp = (v, lo, hi, dflt) => (Number.isFinite(Number(v)) && v !== "" && v !== null ? Math.min(hi, Math.max(lo, Math.round(Number(v)))) : dflt);
+  return { maxTouches: clamp(c.maxTouches, 1, 6, 3), waitHours: clamp(c.waitHours, 24, 168, 72) };
+}
+
 const APPROVAL_LEVELS = ["manual", "assisted", "autonomous"];
 
 // Approval policy per campaign: which actions need a human (three toggles) and how a human can be
@@ -392,7 +400,7 @@ export function createCampaign(values, { launch = false } = {}) {
       icpText: (values.icpText || "").trim(), geography: values.geography || [], personas: values.personas || [],
       companyCriteria: values.companyCriteria || "", exclusionCriteria: values.exclusionCriteria || "", channels: values.channels || [],
       qualificationPrompt: (values.qualificationPrompt || "").trim(), dailyLimit: Number(values.dailyLimit) || 0,
-      workingHours: values.workingHours || "", approvals: normalizeApprovals(values.approvals), sources: normalizeSources(values.sources),
+      workingHours: values.workingHours || "", cadence: normalizeCadence(values.cadence), approvals: normalizeApprovals(values.approvals), sources: normalizeSources(values.sources),
       funnel: zeroFunnel(), outreach: { emails: 0, linkedin: 0, replies: 0, followups: 0, costPerQualified: 0 },
       responseRate: 0, createdTs: now, modifiedTs: now,
     });
@@ -427,6 +435,7 @@ export function updateCampaign(id, values = {}) {
     c.dailyLimit = Number(values.dailyLimit) || 0;
     c.workingHours = values.workingHours || "";
     c.approvals = normalizeApprovals(values.approvals);
+    c.cadence = normalizeCadence(values.cadence);
     c.icpSummary = [c.personas.join(" & "), c.geography.join(", ")].filter(Boolean).join(" · ");
     c.modifiedTs = Date.now();
     addEvent(s, { campaignId: id, type: "edit", text: `**${c.name}** settings edited by JD (applies from the next agent run)`, featured: false });
@@ -510,7 +519,8 @@ export function decideApproval(id, { action, reason = "" } = {}) {
         }
       } else {
         p.lastAction = "Action rejected, {ago}";
-        p.nextStep = "Needs rework";
+        // A rejected follow-up ends the sequence; a rejected opening message goes back for a redraft.
+        p.nextStep = a.touchKind === "cadence" ? "Follow-up rejected: sequence stopped" : "Needs rework";
       }
       p.lastTs = now;
     }

@@ -64,7 +64,7 @@ Rules:
 4. Do not quote prices and do not make security or compliance commitments. Do not propose specific meeting times.
 5. reasoning is 1-2 sentences on why this channel and angle.`;
 
-const CONVERSATION_SYSTEM = `You are the Conversation & Follow-up agent in an autonomous SDR pipeline. A prospect has replied; decide the next action.
+const CONVERSATION_SYSTEM = `You are the Conversation & Follow-up agent in an autonomous SDR pipeline. A prospect has replied; decide the next action and draft the reply.
 
 The user message is a JSON object with: person, company, campaign (approvals), dossier, conversation (messages, dir "in" for the prospect and "out" for us), knowledge, and optionally instruction and campaign_override.
 
@@ -72,7 +72,31 @@ action must be exactly one of:
 - "escalate": any pricing, security, compliance, legal or data-residency question or objection; anything you cannot answer from knowledge; a hostile or unclear reply.
 - "meeting": the prospect clearly wants a call or a meeting.
 - "followup": interest or a question that knowledge lets you answer safely.
-Never commit to anything that is not in knowledge. reasoning is 1-2 sentences.`;
+Never commit to anything that is not in knowledge. reasoning is 1-2 sentences.
+
+reply_draft is the message to send back, in the voice of a helpful SDR, under 90 words, using only facts in knowledge or the prospect data. For "meeting", confirm interest and offer to arrange a time without inventing specific times. For "escalate", write a brief holding reply for a human to edit: acknowledge the question, say a specialist will follow up, and make no commitment, quote no price and claim no certification. Never invent numbers, customers or claims.`;
+
+const STRATEGY_SYSTEM = `You are the Outreach Strategy agent in an autonomous SDR pipeline. For ONE qualified prospect you plan the touch sequence: which channels, in what order, and how many hours to wait between touches. You do not write messages.
+
+The user message is a JSON object with: person, company, campaign (channels, personas, icp), dossier, knowledge, constraints (allowed_channels, max_touches, default_wait_hours), and optionally instruction and campaign_override.
+
+Rules:
+1. sequence lists one channel per touch, in order. Every channel must be one of constraints.allowed_channels; never use any other. Use at most constraints.max_touches touches. A channel may repeat (a later email after a LinkedIn message).
+2. Lead with the channel this person is most likely to answer on, from their role and seniority: founders and CEOs are reachable on LinkedIn; CTOs, CIOs and risk leaders usually expect a considered email; regulated-industry leaders prefer email over SMS.
+3. SMS is never the first touch and is used only as a later, short nudge. Voice, if allowed, is the last touch.
+4. wait_hours is the pause between touches, an integer from 24 to 168. Use constraints.default_wait_hours unless the prospect's role or region suggests longer or shorter.
+5. reasoning is 1-2 sentences naming the facts you used. Use only facts present in the input.`;
+
+const FOLLOWUP_SYSTEM = `You are the Follow-up agent in an autonomous SDR pipeline. A contacted prospect has not replied. You write ONE follow-up for the next channel in their plan. You never send anything: a human approves it or a policy does.
+
+The user message is a JSON object with: person, company, campaign, dossier, knowledge, conversation (the earlier messages; dir "out" is ours), follow_up (channel, touch_number, is_last_touch), and optionally instruction and campaign_override.
+
+Rules:
+1. Write for follow_up.channel. Under 90 words for email, under 60 for LinkedIn, SMS or voice notes. A subject line only for email, otherwise a short label.
+2. Add ONE new, relevant fact that is in knowledge or the prospect data, and do not repeat any earlier message or its opening. Do not apologise for writing, guilt-trip, or say "just checking in".
+3. Never invent details, numbers, customers or claims; make product claims only if they appear in knowledge. No prices, no security or compliance commitments, no specific meeting times.
+4. If is_last_touch is true, close the loop politely: say this is the last note and leave the door open.
+5. angle is 2-6 words naming the new fact you used. reasoning is 1-2 sentences.`;
 
 // ---- response schemas (Gemini's OpenAPI-subset; upper-case type names) --------------------------
 
@@ -100,18 +124,52 @@ const ICP_SCHEMA = {
   required: ["agent_name", "decision", "qualified", "fit_score", "score", "reasoning", "reasons", "evidence", "final_action", "handoff_note"],
 };
 
-// The channel enum is built per campaign, so "a disabled channel" cannot even be produced.
-const draftSchema = (campaign) => ({
+// The channel enum is built per campaign (and narrowed to the planned channel), so "a disabled channel" cannot even
+// be produced.
+const draftSchema = (campaign, channel) => ({
   type: "OBJECT",
-  properties: { channel: { type: "STRING", enum: campaign.channels }, subject: S, body: S, reasoning: S },
+  properties: { channel: { type: "STRING", enum: channel ? [channel] : campaign.channels }, subject: S, body: S, reasoning: S },
   required: ["channel", "subject", "body", "reasoning"],
 });
 
 const CONVERSATION_SCHEMA = {
   type: "OBJECT",
-  properties: { action: { type: "STRING", enum: ["meeting", "escalate", "followup"] }, reasoning: S },
-  required: ["action", "reasoning"],
+  properties: { action: { type: "STRING", enum: ["meeting", "escalate", "followup"] }, reasoning: S, reply_draft: S },
+  required: ["action", "reasoning", "reply_draft"],
 };
+
+const strategySchema = (allowed, maxTouches) => ({
+  type: "OBJECT",
+  properties: {
+    sequence: { type: "ARRAY", items: { type: "STRING", enum: allowed }, minItems: 1, maxItems: maxTouches },
+    wait_hours: { type: "INTEGER" },
+    reasoning: S,
+  },
+  required: ["sequence", "wait_hours", "reasoning"],
+});
+
+const FOLLOWUP_SCHEMA = {
+  type: "OBJECT",
+  properties: { subject: S, body: S, angle: S, reasoning: S },
+  required: ["subject", "body", "angle", "reasoning"],
+};
+
+/** Turns the model's plan into a safe one: only allowed channels, within the touch limit, sane wait. */
+export function normalizePlan(o, { allowed, maxTouches, defaultWait }) {
+  const sequence = (Array.isArray(o.sequence) ? o.sequence : [])
+    .map((c) => String(c).trim().toLowerCase())
+    .filter((c) => allowed.includes(c))
+    .slice(0, maxTouches);
+  if (!sequence.length) throw new GeminiError("strategy output has no usable channel in its sequence");
+  const wait = Math.round(Number(o.wait_hours));
+  const waitHours = Number.isFinite(wait) ? Math.min(168, Math.max(24, wait)) : defaultWait;
+  return { sequence, waitHours, reasoning: o.reasoning || "" };
+}
+
+export function normalizeFollowUp(o) {
+  if (!o.body || typeof o.body !== "string") throw new GeminiError("follow-up output has no message body");
+  return { subject: o.subject || "Following up", body: o.body, angle: o.angle || "", reasoning: o.reasoning || "" };
+}
 
 // ---- transport --------------------------------------------------------------------------------
 
@@ -231,10 +289,31 @@ export async function geminiScoreICP({ campaign, prospect, promptText, knowledge
   return normalizeICP(out);
 }
 
-export async function geminiDraftOutreach({ campaign, prospect, promptText, override, knowledge }) {
+export async function geminiDraftOutreach({ campaign, prospect, promptText, override, knowledge, channel }) {
   const input = { ...baseInput(campaign, prospect, promptText, knowledge), campaign_override: override || null };
-  const out = await generate({ agent: "personalisation", system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign) });
+  const out = await generate({ agent: "personalisation", system: PERSONALISATION_SYSTEM, input, schema: draftSchema(campaign, channel) });
   return normalizeDraft(out, campaign);
+}
+
+export async function geminiPlanOutreach({ campaign, prospect, promptText, override, allowedChannels, maxTouches, defaultWait }) {
+  const input = {
+    ...baseInput(campaign, prospect, promptText, []),
+    constraints: { allowed_channels: allowedChannels, max_touches: maxTouches, default_wait_hours: defaultWait },
+    campaign_override: override || null,
+  };
+  const out = await generate({ agent: "strategy", system: STRATEGY_SYSTEM, input, schema: strategySchema(allowedChannels, maxTouches) });
+  return normalizePlan(out, { allowed: allowedChannels, maxTouches, defaultWait });
+}
+
+export async function geminiDraftFollowUp({ campaign, prospect, promptText, override, knowledge, channel, touchNumber, isLast }) {
+  const input = {
+    ...baseInput(campaign, prospect, promptText, knowledge),
+    conversation: prospect.conversation || [],
+    follow_up: { channel, touch_number: touchNumber, is_last_touch: !!isLast },
+    campaign_override: override || null,
+  };
+  const out = await generate({ agent: "followup", system: FOLLOWUP_SYSTEM, input, schema: FOLLOWUP_SCHEMA });
+  return normalizeFollowUp(out);
 }
 
 export async function geminiHandleConversation({ campaign, prospect, promptText, override, knowledge }) {

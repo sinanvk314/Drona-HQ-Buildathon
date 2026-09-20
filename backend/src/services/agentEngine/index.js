@@ -81,14 +81,47 @@ export async function scoreICP({ state, campaign, prospect, icpAgent }) {
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
 }
 
-export async function draftOutreach({ campaign, prospect, personalisationAgent }) {
+export async function draftOutreach({ campaign, prospect, personalisationAgent, channel }) {
   const { text, harness, override } = activePromptFor(personalisationAgent, campaign.id);
   const knowledge = await retrieve(campaign, `${prospect.company} ${prospect.industry} ${(prospect.reasons || []).join(" ")}`, 2);
   const result = await withFallback(
     () => llm.llmDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
-    () => rule.ruleDraftOutreach({ campaign, prospect, knowledge, override }),
+    () => rule.ruleDraftOutreach({ campaign, prospect, knowledge, override, channel }),
     () => dronahq.dronahqDraftOutreach({ campaign, prospect, promptText: text, override, knowledge }),
-    () => gemini.geminiDraftOutreach({ campaign, prospect, promptText: text, override, knowledge })
+    () => gemini.geminiDraftOutreach({ campaign, prospect, promptText: text, override, knowledge, channel })
+  );
+  return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
+}
+
+/** Outreach Strategy Agent: the prospect's touch plan. `allowedChannels` are the campaign's channels that are enabled right now. */
+export async function planOutreach({ campaign, prospect, strategyAgent, allowedChannels }) {
+  const { text, harness, override } = activePromptFor(strategyAgent, campaign.id);
+  const maxTouches = (campaign.cadence && campaign.cadence.maxTouches) || 3;
+  const defaultWait = (campaign.cadence && campaign.cadence.waitHours) || 72;
+  const args = { campaign, prospect, allowedChannels, maxTouches, defaultWait };
+  const result = await withFallback(
+    null,
+    () => rule.ruleStrategy(args),
+    null,
+    () => gemini.geminiPlanOutreach({ ...args, promptText: text, override })
+  );
+  return { ...result, harness, instruction: override || text };
+}
+
+// A different angle on each follow-up, so the retrieved fact is new rather than a repeat of the opening message.
+const FOLLOWUP_TOPICS = ["customer case study results", "works with existing tools no migration", "security compliance data residency"];
+
+/** Follow-up Agent: the next message for a prospect who has not replied. */
+export async function draftFollowUp({ campaign, prospect, followupAgent, channel, touchNumber, isLast }) {
+  const { text, harness, override } = activePromptFor(followupAgent, campaign.id);
+  const topic = FOLLOWUP_TOPICS[(touchNumber - 1) % FOLLOWUP_TOPICS.length];
+  const knowledge = await retrieve(campaign, `${prospect.industry} ${topic}`, 2);
+  const args = { campaign, prospect, knowledge, channel, touchNumber, isLast };
+  const result = await withFallback(
+    null,
+    () => rule.ruleFollowUp(args),
+    null,
+    () => gemini.geminiDraftFollowUp({ ...args, promptText: text, override })
   );
   return { ...result, harness, retrieved: [...new Set(knowledge.map((k) => k.label))], instruction: override || text };
 }
@@ -99,7 +132,7 @@ export async function handleConversation({ campaign, prospect, conversationAgent
   const knowledge = await retrieve(campaign, lastIn ? lastIn.text : campaign.objective, 2);
   const result = await withFallback(
     () => llm.llmHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
-    () => rule.ruleHandleConversation({ campaign, prospect }),
+    () => rule.ruleHandleConversation({ campaign, prospect, knowledge }),
     () => dronahq.dronahqHandleConversation({ campaign, prospect, promptText: text, override, knowledge }),
     () => gemini.geminiHandleConversation({ campaign, prospect, promptText: text, override, knowledge })
   );

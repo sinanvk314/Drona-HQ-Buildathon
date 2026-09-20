@@ -59,5 +59,8 @@ export function generateProspect(campaign) {
     qual: { status: "Pending", reasoning: "Research complete; waiting for the ICP Fitment Agent.", agent: "Lead Research Agent", harness: "harness v2.0", ts: Date.now() },
     history: [{ kind: "chat", text: "Research record completed by Lead Research Agent", when: "Today" }],
     conversation: [],
+    touches: [],
+    plan: null,
+    nextTouchTs: null,
   };
 }

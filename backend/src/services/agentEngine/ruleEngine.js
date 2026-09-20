@@ -84,8 +84,8 @@ export function ruleScoreICP({ campaign, prospect }) {
 }
 
 /** Personalisation & Outreach Strategy Agent: pick a channel and draft an opening message. */
-export function ruleDraftOutreach({ campaign, prospect, knowledge, override }) {
-  const channel = (campaign.channels || [])[0] || "email";
+export function ruleDraftOutreach({ campaign, prospect, knowledge, override, channel: planned }) {
+  const channel = planned || (campaign.channels || [])[0] || "email";
   const fact =
     (prospect.reasons && prospect.reasons[0]) ||
     (prospect.tech && prospect.tech.length ? `your use of ${prospect.tech[0]}` : `${prospect.company}'s recent growth`);
@@ -100,20 +100,74 @@ export function ruleDraftOutreach({ campaign, prospect, knowledge, override }) {
   };
 }
 
-/** Conversation & Follow-up Agent: decide how to react to the prospect's latest reply. */
-export function ruleHandleConversation({ campaign, prospect }) {
+const firstSentence = (knowledge, fallback) => (knowledge && knowledge[0] ? knowledge[0].text.split(/(?<=[.!?])\s/)[0] : fallback);
+
+/** Conversation & Follow-up Agent: decide how to react to the prospect's latest reply, and draft the answer. */
+export function ruleHandleConversation({ campaign, prospect, knowledge }) {
   const lastIn = (prospect.conversation || []).filter((c) => c.dir === "in").slice(-1)[0];
   const text = (lastIn && lastIn.text || "").toLowerCase();
+  const first = (prospect.name || "there").split(" ")[0];
   const objection = /(soc\s*2|security|compliance|residency|data\s*is\s*stored)/i.test(text);
   const meetingIntent = /(call|meet|thursday|friday|schedule|available)/i.test(text);
 
   if (objection && campaign.approvals && campaign.approvals.escalate) {
-    return { action: "escalate", reasoning: "Prospect raised a security/compliance question; campaign policy requires human escalation on any such objection." };
+    return {
+      action: "escalate",
+      reasoning: "Prospect raised a security/compliance question; campaign policy requires human escalation on any such objection.",
+      draft: `Hi ${first}, thanks for asking. That is a question our security lead should answer properly, so I am passing it to them and they will follow up shortly.`,
+    };
   }
   if (meetingIntent) {
-    return { action: "meeting", reasoning: "Prospect signalled intent to schedule a call; proposing a meeting time." };
+    return {
+      action: "meeting",
+      reasoning: "Prospect signalled intent to schedule a call; proposing a meeting time.",
+      draft: `Hi ${first}, glad this is relevant. I will arrange a short call and send over a few times that work.`,
+    };
   }
-  return { action: "followup", reasoning: "No clear objection or meeting intent yet; sending a contextual follow-up." };
+  return {
+    action: "followup",
+    reasoning: "No clear objection or meeting intent yet; sending a contextual follow-up.",
+    draft: `Hi ${first}, thanks for getting back to me. ${firstSentence(knowledge, "NimbusGuard finds cloud waste without a migration.")} Happy to go into more detail on a short call.`,
+  };
+}
+
+const SENIOR_FIRST = /(founder|ceo|chief executive|owner)/i;
+
+/** Outreach Strategy Agent: which channels, in what order, how long to wait. Heuristic by seniority and role. */
+export function ruleStrategy({ campaign, prospect, allowedChannels, maxTouches, defaultWait }) {
+  const preferred = SENIOR_FIRST.test(prospect.title || "")
+    ? ["linkedin", "email", "sms", "voice"]
+    : ["email", "linkedin", "voice", "sms"];
+  let ordered = preferred.filter((c) => allowedChannels.includes(c));
+  if (!ordered.length) ordered = [...allowedChannels];
+  // SMS is a later nudge, never the opening touch.
+  if (ordered.length > 1 && ordered[0] === "sms") ordered = [...ordered.slice(1), "sms"];
+  // Voice is the last resort: the final touch, after the written channels have been tried.
+  const written = ordered.filter((c) => c !== "voice");
+  const lastVoice = ordered.includes("voice") && written.length > 0 && maxTouches > 1;
+  const cycle = lastVoice ? written : ordered;
+  const sequence = Array.from({ length: lastVoice ? maxTouches - 1 : maxTouches }, (_, i) => cycle[i % cycle.length]);
+  if (lastVoice) sequence.push("voice");
+  return {
+    sequence,
+    waitHours: defaultWait,
+    reasoning: `${SENIOR_FIRST.test(prospect.title || "") ? "Founder-level contact: lead on LinkedIn" : `${prospect.title || "This role"} usually expects a considered email: lead on email`}, then ${sequence.slice(1).join(", ") || "no further channels"}.`,
+  };
+}
+
+/** Follow-up Agent: a short, different message for the next channel in the plan. */
+export function ruleFollowUp({ prospect, knowledge, channel, touchNumber, isLast }) {
+  const first = (prospect.name || "there").split(" ")[0];
+  const fact = firstSentence(knowledge, "NimbusGuard finds cloud waste without a migration.");
+  const body = isLast
+    ? `Hi ${first}, this is my last note. ${fact} If it is ever useful, I am glad to share more.`
+    : `Hi ${first}, one more thought. ${fact} Worth a short look?`;
+  return {
+    subject: channel === "email" ? `Following up: ${prospect.company}` : "Following up",
+    body,
+    angle: "Reused product fact",
+    reasoning: `Follow-up ${touchNumber} on ${channel}: adds a product fact from the knowledge base and does not repeat the opening message.`,
+  };
 }
 
 /** Lead Research & Enrichment Agent: fills in a newly discovered prospect's research record. */
