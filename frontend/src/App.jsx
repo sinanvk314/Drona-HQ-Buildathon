@@ -17,6 +17,7 @@ const SCREENS = {
   command: CommandCenter,
   campaigns: CommandCenter,
   createCampaign: CreateCampaign,
+  editCampaign: CreateCampaign,
   campaignDetail: CampaignDetail,
   prospects: Prospects,
   prospect: ProspectDetail,

@@ -6,7 +6,7 @@ import { Badge, Tag } from "../components/ui/Badge.jsx";
 import Toggle from "../components/ui/Toggle.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
-import { createCampaign, getCampaignDefaults } from "../services/api.js";
+import { createCampaign, getCampaignConfig, getCampaignDefaults, updateCampaign } from "../services/api.js";
 import { CHANNEL_KEYS, CHANNEL_LABELS } from "../data/constants.js";
 import { validateCampaign } from "../utils/validation.js";
 import AddSourceModal from "../components/campaign/AddSourceModal.jsx";
@@ -65,10 +65,12 @@ function AddChip({ onAdd }) {
   );
 }
 
-export default function CreateCampaign() {
+// One form for both: with params.id it edits that campaign, without it it creates a new one.
+export default function CreateCampaign({ params = {} }) {
+  const editId = params.id || null;
   const { navigate } = useNav();
   const toast = useToast();
-  const { data: defaults } = useApi(() => getCampaignDefaults(), [], { pollMs: 0 });
+  const { data: defaults, error: loadError } = useApi(() => (editId ? getCampaignConfig(editId) : getCampaignDefaults()), [editId], { pollMs: 0 });
   const [v, setV] = useState(null);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -78,8 +80,15 @@ export default function CreateCampaign() {
     if (defaults && !v) setV(defaults);
   }, [defaults]);
 
-  const badge = <Badge tone="neutral">DRAFT</Badge>;
-  if (!v) return <Shell active="campaigns" title="New Campaign" badge={badge}><div /></Shell>;
+  const badge = editId ? null : <Badge tone="neutral">DRAFT</Badge>;
+  const title = editId ? "Edit Campaign" : "New Campaign";
+  if (!v) {
+    return (
+      <Shell active="campaigns" title={title} badge={badge}>
+        {loadError && <div className="card" style={{ padding: 20, fontSize: 13.5 }}>{loadError}</div>}
+      </Shell>
+    );
+  }
 
   const set = (k, val) => {
     setV((p) => ({ ...p, [k]: val }));
@@ -95,6 +104,26 @@ export default function CreateCampaign() {
   const addOption = (optKey, selKey, label) => {
     if (!v[optKey].includes(label)) setV((p) => ({ ...p, [optKey]: [...p[optKey], label], [selKey]: [...p[selKey], label] }));
     else if (!v[selKey].includes(label)) toggleIn(selKey, label);
+  };
+
+  const save = async () => {
+    // A campaign that has already been launched must stay fully valid; a Draft only needs a name.
+    const errs = validateCampaign(v, v.rawStatus !== "draft");
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      toast("Please fix the highlighted fields.", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateCampaign(editId, v);
+      toast("Changes saved. They apply from the next agent run.");
+      navigate("campaignDetail", { id: editId });
+    } catch (e) {
+      if (e.fields) setErrors(e.fields);
+      toast(e.message, "error");
+      setBusy(false);
+    }
   };
 
   const submit = async (launch) => {
@@ -130,15 +159,24 @@ export default function CreateCampaign() {
         display: "flex", justifyContent: "flex-end", gap: 10,
       }}
     >
-      <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => submit(false)}>Save as Draft</button>
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => submit(true)}>Launch Campaign</button>
+      {editId ? (
+        <>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => navigate("campaignDetail", { id: editId })}>Cancel</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>Save changes</button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => submit(false)}>Save as Draft</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => submit(true)}>Launch Campaign</button>
+        </>
+      )}
     </div>
   );
 
   const cls = (k) => `input ${errors[k] ? "error" : ""}`;
 
   return (
-    <Shell active="campaigns" title="New Campaign" badge={badge} footer={footer}>
+    <Shell active="campaigns" title={title} badge={badge} footer={footer}>
       <div style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 18 }}>
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 16 }}>Campaign Identity</div>
@@ -237,6 +275,11 @@ export default function CreateCampaign() {
           <ApprovalLevel value={v.approvals} onChange={(a) => set("approvals", a)} />
         </div>
 
+        {editId ? (
+          <div className="card" style={{ padding: 22, fontSize: 13, color: "var(--text-2)" }}>
+            Knowledge sources are managed on the campaign page, where adding or removing one takes effect immediately.
+          </div>
+        ) : (
         <div className="card" style={{ padding: 22 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>Campaign Knowledge / RAG Sources</div>
           <div className="field-hint" style={{ marginBottom: 14, marginTop: 0 }}>
@@ -260,6 +303,7 @@ export default function CreateCampaign() {
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {addingSource && <AddSourceModal onClose={() => setAddingSource(false)} onAdd={addSource} />}

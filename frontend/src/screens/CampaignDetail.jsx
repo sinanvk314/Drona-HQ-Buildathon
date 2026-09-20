@@ -7,7 +7,8 @@ import RichText from "../components/ui/RichText.jsx";
 import { StatusBadge, Tag } from "../components/ui/Badge.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { ACTION_LABEL, useCampaignActions } from "../hooks/useCampaignActions.js";
-import { getCampaign } from "../services/api.js";
+import { duplicateCampaign, getCampaign } from "../services/api.js";
+import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
 import KnowledgePanel from "../components/campaign/KnowledgePanel.jsx";
@@ -17,6 +18,7 @@ const LABEL = { fontSize: 10.5, fontWeight: 600, color: "var(--text-3)", textTra
 export default function CampaignDetail({ params }) {
   const { navigate } = useNav();
   const act = useCampaignActions();
+  const toast = useToast();
   const { data: c, error } = useApi(() => getCampaign(params.id), [params.id]);
   const crumbs = [{ label: "Campaigns", onClick: () => navigate("campaigns") }];
 
@@ -29,6 +31,16 @@ export default function CampaignDetail({ params }) {
   }
 
   const draft = c.rawStatus === "draft";
+  const editable = c.rawStatus !== "completed" && c.rawStatus !== "archived";
+  const duplicate = async () => {
+    try {
+      const copy = await duplicateCampaign(c.id);
+      toast("Copied as a new Draft");
+      navigate("campaignDetail", { id: copy.id });
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
   const o = c.outreach;
 
   return (
@@ -40,6 +52,10 @@ export default function CampaignDetail({ params }) {
             {c.icpSummary} &nbsp;·&nbsp; Objective: {c.objective} &nbsp;·&nbsp; Owner: {c.owner}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>Last modified {timeAgo(c.modifiedTs)}</div>
+          <button type="button" className="btn btn-secondary" onClick={duplicate}>Duplicate</button>
+          {editable && (
+            <button type="button" className="btn btn-secondary" onClick={() => navigate("editCampaign", { id: c.id })}>Edit</button>
+          )}
           {c.action && (
             <button
               type="button"

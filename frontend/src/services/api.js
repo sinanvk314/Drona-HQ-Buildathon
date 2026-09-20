@@ -61,6 +61,7 @@ export const getShellState = () => get("/shell");
 export const getCommandCenter = () => get("/command-center");
 export const getCampaign = (id) => get(`/campaigns/${id}`);
 export const getCampaignDefaults = () => get("/campaigns/defaults");
+export const getCampaignConfig = (id) => get(`/campaigns/${id}/config`);
 export const getProspects = () => get("/prospects");
 export const getProspect = (id) => get(`/prospects/${id}`);
 export const getDecisions = ({ limit = 4 } = {}) => get(`/decisions?limit=${limit}`);
@@ -78,6 +79,8 @@ export const launchCampaign = (id) => post(`/campaigns/${id}/launch`);
 export const completeCampaign = (id) => post(`/campaigns/${id}/complete`);
 export const archiveCampaign = (id) => post(`/campaigns/${id}/archive`);
 export const createCampaign = (values, { launch = false } = {}) => post("/campaigns", { values, launch });
+export const updateCampaign = (id, values) => request(`/campaigns/${id}`, { method: "PUT", body: { values } }).then((r) => (emit(), r));
+export const duplicateCampaign = (id) => post(`/campaigns/${id}/duplicate`);
 
 // Knowledge sources of an existing campaign: `content` is the text agents retrieve from.
 export const addCampaignSource = (id, { name, category, content }) => post(`/campaigns/${id}/sources`, { name, category, content });

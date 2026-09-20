@@ -14,6 +14,7 @@ export const EVENT_STYLE = {
   resume: S("check", "var(--accent-soft)", "var(--accent-strong)", "var(--accent)"),
   launch: S("sparkle", "var(--accent-soft)", "var(--accent-strong)", "var(--accent)"),
   completed: S("check", "var(--success-soft)", "var(--success)", "var(--success)"),
+  edit: S("sliders", "var(--neutral-soft)", "var(--text-2)", "var(--text-3)"),
   kill: S("power", "var(--danger-soft)", "var(--danger)", "var(--danger)"),
 };
 

@@ -305,6 +305,7 @@ node scripts/try-agents.mjs    # personalisation + conversation samples
 - Pause a campaign, pause an agent, pause a channel, or the global kill switch. Each stops exactly its own scope.
 - Autonomous loop: research → ICP fit → personalisation → approvals queue → conversation, gated at every step.
 - Per-campaign knowledge base with add/remove in the UI, semantic retrieval before every decision, and the retrieved sources shown in the Decision Journal.
+- Edit a campaign after creation, and duplicate one into a new Draft to build a variant.
 - Prompt versioning per agent (save, activate an older version), with the active version recorded on each decision.
 - Approval levels, cross-campaign conflict detection, a global suppression list, cost cap and an efficiency panel.
 - Failure handling: bad or empty model output, HTTP errors and quota exhaustion fall back to the rule engine without stopping the loop.
