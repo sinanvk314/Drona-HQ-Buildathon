@@ -190,3 +190,16 @@ test("replies are split into positive, negative and neutral outcomes, with conve
   assert.ok(view.rates.qualify >= 0 && view.rates.reply <= 100 && view.rates.meeting <= 100);
   assert.equal(typeof data.getCampaign("c_us_saas").activity.inFlight, "number");
 });
+
+test("proof of life: a Live campaign records when it was last worked on, and a paused one stops", async () => {
+  const live = s.campaigns.find((c) => c.status === "live");
+  const paused = s.campaigns.find((c) => c.status === "paused");
+  assert.ok(live && paused, "the fixture has one of each");
+  const before = paused.lastTickTs || null;
+  const liveBefore = live.lastTickTs || 0;
+  await new Promise((r) => setTimeout(r, 5));
+  await tick();
+  assert.ok(live.lastTickTs > liveBefore, "the Live campaign was worked on");
+  assert.equal(paused.lastTickTs || null, before, "the paused one was not");
+  assert.equal(data.getCampaign(live.id).lastTickTs, live.lastTickTs, "and the page can see it");
+});

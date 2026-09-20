@@ -58,20 +58,31 @@ if (live.length < 2) {
   const [target, ...others] = live;
   console.log(`
 Pausing "${target.name}" for ${waitMs / 1000}s while ${others.length} other Live campaign${others.length === 1 ? "" : "s"} keep running...`);
-  const before = { target: await prospectsOf(target.id) };
-  for (const o of others) before[o.id] = await prospectsOf(o.id);
+  // "Running" is measured by when the scheduler last worked on a campaign, not by how many prospects it has: a campaign can be
+  // busy without gaining a prospect (a one-person campaign never does; a model-driven search is throttled), and a model call that
+  // was already in flight when a campaign was paused may still finish, which is harmless.
+  const info = async (id) => { const r = (await call(`/api/campaigns/${id}`)).body; return { ts: r.lastTickTs, n: r.metrics.pipeline }; };
   const paused = await call(`/api/campaigns/${target.id}/pause`, { method: "POST", body: "{}" });
   check(paused.status === 200 && paused.body?.status === "paused", "campaign paused");
   try {
+    await sleep(Math.min(15000, waitMs / 2)); // let anything already in flight finish
+    const before = { target: await info(target.id) };
+    for (const o of others) before[o.id] = await info(o.id);
     await sleep(waitMs);
-    const after = { target: await prospectsOf(target.id) };
-    for (const o of others) after[o.id] = await prospectsOf(o.id);
-    check(after.target === before.target, "paused campaign made no progress", `${before.target} -> ${after.target}`);
-    // A one-person campaign has a single prospect and waits for a human, so it cannot grow. The check is that at least one
-    // other campaign that can grow did.
-    const grew = others.filter((o) => after[o.id] > before[o.id]);
-    for (const o of others) console.log(`        ${o.name}: ${before[o.id]} -> ${after[o.id]}`);
-    check(grew.length > 0, "another Live campaign kept running", grew.length ? grew.map((o) => o.name).join(", ") : "none of the others gained prospects: they may be one-person or real campaigns waiting for approval, so make sure at least one ordinary audience campaign is Live");
+    const after = { target: await info(target.id) };
+    for (const o of others) after[o.id] = await info(o.id);
+    const usesClock = before.target.ts !== undefined; // null means "not worked on yet"; undefined means an older server
+    if (usesClock) {
+      check(after.target.ts === before.target.ts, "paused campaign was not worked on", `last worked on ${before.target.ts ? new Date(before.target.ts).toISOString() : "never"}, unchanged`);
+      const alive = others.filter((o) => (after[o.id].ts || 0) > (before[o.id].ts || 0));
+      for (const o of others) console.log(`        ${o.name}: worked on ${(after[o.id].ts || 0) > (before[o.id].ts || 0) ? "again during the pause" : "not during the pause"} (${before[o.id].n} -> ${after[o.id].n} prospects)`);
+      check(alive.length > 0, "another Live campaign kept running", alive.map((o) => o.name).join(", ") || "none was worked on: is the scheduler running?");
+    } else {
+      // An older server without the proof-of-life field: fall back to counting prospects.
+      check(after.target.n === before.target.n, "paused campaign made no progress", `${before.target.n} -> ${after.target.n}`);
+      const grew = others.filter((o) => after[o.id].n > before[o.id].n);
+      check(grew.length > 0, "another Live campaign kept running", grew.map((o) => o.name).join(", ") || "none gained prospects (redeploy the latest version for a better check)");
+    }
   } finally {
     const resumed = await call(`/api/campaigns/${target.id}/resume`, { method: "POST", body: "{}" });
     check(resumed.status === 200 && resumed.body?.status === "live", "campaign resumed (state restored)");

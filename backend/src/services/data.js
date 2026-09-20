@@ -225,7 +225,7 @@ export function getCampaign(id) {
   const card = cardOf(s, c);
   return {
     id: c.id, name: c.name, status: card.status, rawStatus: c.status, action: card.action, locked: card.locked,
-    icpSummary: c.icpSummary, objective: c.objective, owner: c.owner, modifiedTs: c.modifiedTs,
+    icpSummary: c.icpSummary, objective: c.objective, owner: c.owner, modifiedTs: c.modifiedTs, lastTickTs: c.lastTickTs || null,
     metrics: { pipeline: f.discovered, qualifyRate: pct(f.qualified, f.discovered), responseRate: draft ? 0 : c.responseRate, meetings: f.meeting },
     funnel: STAGE_KEYS.map((k) => ({ key: k, label: STAGE_LABELS[k], value: f[k] })),
     timeline: draft ? [] : s.events.filter((e) => e.campaignId === id).sort((a, b) => b.ts - a.ts).slice(0, 4).map((e) => ({ id: e.id, type: e.type, text: e.text, ts: e.ts })),

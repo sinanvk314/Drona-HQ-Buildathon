@@ -1003,6 +1003,7 @@ export async function tick() {
 
   for (const campaign of s.campaigns) {
     if (!isRunning(s, campaign)) continue; // Draft/Paused/Completed/Archived campaigns never progress.
+    campaign.lastTickTs = Date.now(); // proof of life: a paused campaign's stops moving, whatever an in-flight model call does
     for (const [name, run] of STAGES) {
       try {
         await run(s, campaign);
