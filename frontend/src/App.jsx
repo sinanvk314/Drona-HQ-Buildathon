@@ -9,6 +9,7 @@ import ProspectDetail from "./screens/ProspectDetail.jsx";
 import DecisionJournal from "./screens/DecisionJournal.jsx";
 import Approvals from "./screens/Approvals.jsx";
 import AgentsPrompts from "./screens/AgentsPrompts.jsx";
+import Knowledge from "./screens/Knowledge.jsx";
 import Dev from "./screens/Dev.jsx";
 import Settings from "./screens/Settings.jsx";
 import Reps from "./screens/Reps.jsx";
@@ -28,6 +29,7 @@ const SCREENS = {
   journal: DecisionJournal,
   approvals: Approvals,
   agents: AgentsPrompts,
+  knowledge: Knowledge,
   reps: Reps,
   analytics: Compare,
   dev: Dev,

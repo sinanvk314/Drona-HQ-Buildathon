@@ -13,6 +13,7 @@ import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
 import { SDR_STEPS } from "./sdrSteps.js";
+import { FIXED_PROMPTS } from "./agentEngine/geminiEngine.js";
 import { newProspect } from "./prospects.js";
 import { addFact } from "./dossier.js";
 import { recordReply, recordTouch } from "./outreach.js";
@@ -456,6 +457,8 @@ export function getAgent(id) {
   const active = a.versions.find((v) => v.status === "active") || a.versions[0];
   return {
     id: a.id, title: a.title, description: a.description, status: agentStatus(s, a),
+    step: (() => { const st = SDR_STEPS.find((x) => x.agentId === a.id); return st ? { purpose: st.purpose, reads: st.reads, writes: st.writes } : null; })(),
+    fixedPrompt: FIXED_PROMPTS()[a.id] || null,
     scope: s.campaigns.filter((c) => c.status !== "archived").map((c) => c.name),
     campaignPins: s.campaigns.filter((c) => c.status !== "archived").map((c) => ({ campaignId: c.id, campaignName: c.name, version: pinnedVersion(a, c).version })),
     active, versions: a.versions,

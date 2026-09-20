@@ -6,6 +6,7 @@ import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { useNav } from "../components/shell/NavContext.jsx";
 import PromptDiff from "../components/campaign/PromptDiff.jsx";
+import PromptInspector from "../components/campaign/PromptInspector.jsx";
 import { activatePromptVersion, getAgent, getAgents, savePromptVersion } from "../services/api.js";
 import { timeAgo } from "../utils/format.js";
 
@@ -19,6 +20,8 @@ export default function AgentsPrompts() {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
   const [modal, setModal] = useState(null);
+  const [previewCampaign, setPreviewCampaign] = useState("");
+  const [inspect, setInspect] = useState(null);
   const { data: agents } = useApi(() => getAgents(), []);
   const { data: agent } = useApi(() => getAgent(selectedId), [selectedId]);
 
@@ -61,6 +64,46 @@ export default function AgentsPrompts() {
               <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4, marginBottom: 12 }}>{agent.description}</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {agent.scope.map((s) => <Tag key={s}>{s}</Tag>)}
+              </div>
+            </div>
+
+            {agent.step && (
+              <div className="card" style={{ padding: 20 }}>
+                <div className="section-title">What this agent does in the SDR</div>
+                <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>{agent.step.purpose}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", marginBottom: 4 }}>It reads</div>
+                    <ul style={{ margin: "0 0 0 16px", padding: 0, fontSize: 12.5, lineHeight: 1.6 }}>{agent.step.reads.map((x) => <li key={x}>{x}</li>)}</ul>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", marginBottom: 4 }}>It writes</div>
+                    <ul style={{ margin: "0 0 0 16px", padding: 0, fontSize: 12.5, lineHeight: 1.6 }}>{agent.step.writes.map((x) => <li key={x}>{x}</li>)}</ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {agent.fixedPrompt && (
+              <div className="card" style={{ padding: 20 }}>
+                <div className="section-title">Fixed instruction (built into the platform)</div>
+                <div className="field-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+                  Every run of this agent starts from this text: its role, its limits and the exact shape of what it must return. It is part of the code and is versioned with it, so it is shown here but edited by a developer, not from this page.
+                  The campaign prompt and the library prompt below are added after it.
+                </div>
+                <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7, background: "var(--neutral-soft)", whiteSpace: "pre-wrap" }}>{agent.fixedPrompt}</div>
+              </div>
+            )}
+
+            <div className="card" style={{ padding: 20 }}>
+              <div className="section-title">Preview: what this agent receives</div>
+              <div className="field-hint" style={{ marginTop: 0, marginBottom: 10 }}>Pick a campaign to see the campaign prompt, the persona voice, this library prompt and that campaign's extra instruction, in the order they are joined.</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <select className="input" aria-label="Campaign to preview" style={{ maxWidth: 320 }} value={previewCampaign} onChange={(e) => setPreviewCampaign(e.target.value)}>
+                  <option value="">Choose a campaign</option>
+                  {agent.campaignPins.map((c) => <option key={c.campaignId} value={c.campaignId}>{c.campaignName} (runs {c.version})</option>)}
+                </select>
+                <button type="button" className="btn btn-secondary" disabled={!previewCampaign} onClick={() => setInspect({ campaignId: previewCampaign, agentId: agent.id })}>Show</button>
               </div>
             </div>
 
@@ -243,6 +286,7 @@ export default function AgentsPrompts() {
           <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{modal.body}</div>
         </Modal>
       )}
+      {inspect && <PromptInspector campaignId={inspect.campaignId} agentId={inspect.agentId} onClose={() => setInspect(null)} />}
     </Shell>
   );
 }

@@ -7,6 +7,7 @@ import * as data from "../services/data.js";
 import { authConfig, login, me } from "../services/auth.js";
 import * as dev from "../services/dev.js";
 import { getPerformance } from "../services/performance.js";
+import * as knowledge from "../services/knowledge.js";
 
 export const router = Router();
 
@@ -47,6 +48,11 @@ router.post("/campaigns/:id/launch", asyncRoute(async (req, res) => res.json(dat
 router.post("/campaigns/:id/complete", asyncRoute(async (req, res) => res.json(data.completeCampaign(req.params.id))));
 router.post("/campaigns/:id/archive", asyncRoute(async (req, res) => res.json(data.archiveCampaign(req.params.id))));
 
+router.get("/knowledge", asyncRoute(async (req, res) => res.json(knowledge.getKnowledgeLibrary())));
+router.post("/knowledge", asyncRoute(async (req, res) => res.json(knowledge.addKnowledge(req.body || {}))));
+router.post("/knowledge/attach", asyncRoute(async (req, res) => res.json(knowledge.attachKnowledge(req.body || {}))));
+router.post("/knowledge/detach", asyncRoute(async (req, res) => res.json(knowledge.detachKnowledge((req.body || {}).campaignId, (req.body || {}).sourceId))));
+router.post("/knowledge/test", asyncRoute(async (req, res) => res.json(await knowledge.testRetrieval(req.body || {}))));
 router.get("/performance", asyncRoute(async (req, res) => res.json(getPerformance())));
 router.get("/compare", asyncRoute(async (req, res) => res.json(data.getComparison(String(req.query.ids || "").split(",").filter(Boolean)))));
 

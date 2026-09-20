@@ -22,6 +22,13 @@ import {
   personAndCompany,
 } from "./dronahqEngine.js";
 
+// The fixed instruction each agent always runs under (before the campaign and library prompts are added). The Agents page
+// shows these so nothing about what an agent is told is hidden.
+export const FIXED_PROMPTS = () => ({
+  lead: SOURCE_SYSTEM, research: RESEARCH_SYSTEM, icp: ICP_SYSTEM, strategy: STRATEGY_SYSTEM,
+  personalisation: PERSONALISATION_SYSTEM, conversation: CONVERSATION_SYSTEM, followup: FOLLOWUP_SYSTEM,
+});
+
 export class GeminiError extends Error {
   // retryable: a temporary failure worth retrying on the SAME model ("high demand", or a 429 that carries a
   // Retry-After hint). retryAfterMs: Google's Retry-After. switchModel: this model is the problem (quota used

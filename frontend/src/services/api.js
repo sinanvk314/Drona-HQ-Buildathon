@@ -154,3 +154,10 @@ export async function downloadMeetingInvite(prospectId) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ---------------------------------------------------------------- knowledge library
+export const getKnowledge = () => get("/knowledge");
+export const addKnowledge = (values) => post("/knowledge", values);
+export const attachKnowledge = (values) => post("/knowledge/attach", values);
+export const detachKnowledge = ({ campaignId, sourceId }) => post("/knowledge/detach", { campaignId, sourceId });
+export const testKnowledge = ({ campaignId, query }) => post("/knowledge/test", { campaignId, query });
