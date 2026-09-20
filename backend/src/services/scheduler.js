@@ -15,6 +15,8 @@ import { recordTouch, touchLimit } from "./outreach.js";
 import { outreachAllowed } from "./limits.js";
 import { describeIssues } from "./grounding.js";
 import { hoursToMs } from "./simTime.js";
+import { addNote } from "./dossier.js";
+import { SDR_STEPS } from "./sdrSteps.js";
 import { shortDate } from "../utils/format.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
@@ -115,6 +117,7 @@ async function runIcpFitment(s, campaign) {
         prospect.nextStep = "—";
       }
       prospect.lastTs = Date.now();
+      addNote(prospect, { agent: "ICP Fitment Agent", harness: result.harness, engine: result.engine, note: `${result.qualified ? "Qualified" : "Rejected"} at ${result.score}/100. ${result.reasoning}` });
 
       pushDecision(s, {
         kind: result.qualified ? "qualified" : "rejected",
@@ -216,6 +219,7 @@ async function runStrategy(s, campaign) {
       if (!checkConflict(s, prospect).ok) continue; // the Personalisation step records the block
       const result = await engine.planOutreach({ campaign, prospect, strategyAgent, allowedChannels });
       prospect.plan = { sequence: result.sequence, waitHours: result.waitHours, reasoning: result.reasoning, engine: result.engine, harness: result.harness, ts: Date.now() };
+      addNote(prospect, { agent: "Outreach Strategy Agent", harness: result.harness, engine: result.engine, note: `Plan ${result.sequence.join(" → ")}, ${result.waitHours}h between touches. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
@@ -285,6 +289,7 @@ async function runPersonalisation(s, campaign) {
       }
 
       const result = await engine.draftOutreach({ campaign, prospect, personalisationAgent, channel: planned || undefined });
+      addNote(prospect, { agent: "Personalisation Agent", harness: result.harness, engine: result.engine, note: `Drafted the ${result.channel} opening. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
@@ -437,6 +442,7 @@ async function runConversation(s, campaign) {
     try {
       const result = await engine.handleConversation({ campaign, prospect, conversationAgent });
       countOutcome(campaign, result.action === "meeting" ? "positive" : "neutral");
+      addNote(prospect, { agent: "Conversation Agent", harness: result.harness, engine: result.engine, note: `Reply on ${replyChannel}: ${result.action}. ${result.reasoning}` });
       if (result.action === "escalate") {
         pushApproval(s, {
           type: "escalation",
@@ -603,6 +609,7 @@ async function runFollowUp(s, campaign) {
       const isLast = prospect.touches.length + 1 >= touchLimit(campaign, prospect);
       const result = await engine.draftFollowUp({ campaign, prospect, followupAgent, channel, touchNumber, isLast });
 
+      addNote(prospect, { agent: "Follow-up Agent", harness: result.harness, engine: result.engine, note: `Follow-up ${touchNumber} on ${channel}${result.angle ? ` (${result.angle})` : ""}. ${result.reasoning}` });
       pushDecision(s, {
         kind: "strategy",
         campaignId: campaign.id,
@@ -649,14 +656,16 @@ async function runFollowUp(s, campaign) {
   }
 }
 
-const STAGES = [
-  ["Lead Research", runLeadResearch],
-  ["ICP Fitment", runIcpFitment],
-  ["Outreach Strategy", runStrategy],
-  ["Personalisation", runPersonalisation],
-  ["Conversation", runConversation],
-  ["Follow-up", runFollowUp],
-];
+// The pipeline is defined once, in sdrSteps.js (the SDR Blueprint shows the same list); this maps each step to its code.
+const RUNNERS = {
+  discovery: runLeadResearch,
+  icp: runIcpFitment,
+  strategy: runStrategy,
+  personalisation: runPersonalisation,
+  conversation: runConversation,
+  followup: runFollowUp,
+};
+const STAGES = SDR_STEPS.map((step) => [step.title, RUNNERS[step.key]]);
 
 export async function tick() {
   const s = getState();

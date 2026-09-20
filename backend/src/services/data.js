@@ -12,6 +12,7 @@ import { shortDate } from "../utils/format.js";
 import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
+import { SDR_STEPS } from "./sdrSteps.js";
 import { recordTouch } from "./outreach.js";
 import { sentToday } from "./limits.js";
 import { campaignsNeedingReps, repTouchesToday } from "./reps.js";
@@ -896,6 +897,86 @@ export function setCampaignReps(campaignId, repIds) {
     addEvent(s, { campaignId, type: "edit", text: `${currentUser()} set the reps for **${c.name}** to ${ids.map((id) => s.reps.find((r) => r.id === id).name).join(", ") || "no one"}`, featured: false });
     return { repIds: ids };
   });
+}
+
+/** How this campaign's voice is set: tone and sign-off are added to the prompt every agent receives. Logged like a prompt change. */
+export function setCampaignPersona(campaignId, { tone = "", signOff = "" } = {}) {
+  return withState((s) => {
+    const c = promptCampaign(s, campaignId);
+    c.persona = { tone: String(tone).trim().slice(0, 300), signOff: String(signOff).trim().slice(0, 80) };
+    c.modifiedTs = Date.now();
+    logPromptChange(c, currentUser(), `Persona: ${c.persona.tone || "no tone set"}${c.persona.signOff ? `; sign-off "${c.persona.signOff}"` : ""}`);
+    return c.persona;
+  });
+}
+
+/**
+ * The complete definition of this campaign's SDR in one place: mission, persona, the steps it runs (the same list the
+ * scheduler executes), its tools, its shared memory and its policies.
+ */
+export function getBlueprint(id) {
+  const s = getState();
+  const c = campaignOf(s, id);
+  const decisions = s.decisions.filter((d) => d.campaignId === id && d.engine);
+  const sp = c.systemPrompt && c.systemPrompt.versions.find((v) => v.version === c.systemPrompt.active);
+  const prospects = s.prospects.filter((p) => p.campaignId === id);
+  const withDossier = prospects.filter((p) => p.dossier && (p.dossier.notes.length || p.dossier.facts.length));
+
+  const steps = SDR_STEPS.map((step) => {
+    const agent = s.agents.find((a) => a.id === step.agentId);
+    const own = decisions.filter((d) => agentDecisionKey(d) === step.key);
+    return {
+      ...step,
+      title: step.title,
+      enabled: !!agent && agent.enabled && !(c.agentsEnabled && c.agentsEnabled[step.agentId] === false),
+      globallyEnabled: !!agent && agent.enabled,
+      pinned: agent ? pinnedVersion(agent, c).version : null,
+      decisions: own.length,
+      llmDecisions: own.filter((d) => !["rule", "rule-shortcut", "policy", "embedding-router", "auto-approval", "error"].includes(d.engine)).length,
+    };
+  });
+
+  const level = (c.approvals && c.approvals.level) || "manual";
+  return {
+    id: c.id, name: c.name,
+    mission: { objective: c.objective, offer: c.offer, target: c.icpText, mode: c.mode || "bulk", targetPerson: c.target || null, brief: sp ? sp.text : "", briefVersion: sp ? sp.version : null },
+    persona: { tone: (c.persona && c.persona.tone) || "", signOff: (c.persona && c.persona.signOff) || "" },
+    steps,
+    tools: [
+      { name: "Knowledge retrieval", status: c.sources.length ? "on" : "empty", note: `${c.sources.length} source${c.sources.length === 1 ? "" : "s"} searched by meaning before every decision` },
+      { name: "Prospect sourcing", status: "simulated", note: "Synthetic prospects today; real sources are on the roadmap" },
+      { name: "Reply routing", status: "on", note: "Clear opt-outs, hostile replies and out-of-office handled without an LLM" },
+      { name: "Grounding check", status: "on", note: "Every draft is checked against the knowledge and the dossier before it can go out" },
+      ...c.channels.map((k) => ({ name: `Channel: ${k}`, status: s.channels.some((x) => x.key === k && x.enabled) ? "simulated" : "off", note: s.channels.some((x) => x.key === k && x.enabled) ? "Sends are recorded, not delivered" : "Paused platform-wide" })),
+    ],
+    memory: {
+      description: "One dossier per prospect. Every step reads all of it and leaves a hand-off note for the next.",
+      prospectsWithDossier: withDossier.length,
+      notes: withDossier.reduce((n, p) => n + p.dossier.notes.length, 0),
+      facts: withDossier.reduce((n, p) => n + p.dossier.facts.length, 0),
+    },
+    policies: [
+      { label: "Approvals", value: level === "manual" ? "Manual: every toggled action waits for a human" : level === "assisted" ? `Assisted: auto-sends at fit ${c.approvals.autoMinScore ?? 85}+ after ${c.approvals.autoAfterApproved ?? 3} approvals` : "Autonomous: only escalations wait for a human" },
+      { label: "Working hours", value: c.workingHours || "not set" },
+      { label: "Daily limit", value: c.dailyLimit ? `${c.dailyLimit} touches per simulated day` : "none" },
+      { label: "Cadence", value: `${(c.cadence && c.cadence.maxTouches) || 3} touches, ${(c.cadence && c.cadence.waitHours) || 72}h apart` },
+      { label: "Escalation", value: c.approvals && c.approvals.escalate ? "Objections and compliance questions go to a human" : "Objections handled by the agent" },
+      { label: "Safety", value: "Kill switch, agent and channel pause, suppression list, 14-day cross-campaign rule, grounding check" },
+      { label: "Representatives", value: (c.repIds || []).length ? `${c.repIds.length} assigned; each touch is sent as one of them` : "None assigned" },
+    ],
+  };
+}
+
+// Which pipeline step a journal entry belongs to, from the agent's name.
+function agentDecisionKey(d) {
+  const a = d.agent || "";
+  if (/ICP/i.test(a)) return "icp";
+  if (/Strategy/i.test(a) && !/Personalisation/i.test(a)) return "strategy";
+  if (/Personalisation/i.test(a) || /Approval Policy/i.test(a)) return "personalisation";
+  if (/Follow-up/i.test(a)) return "followup";
+  if (/Conversation|Reply Router/i.test(a)) return "conversation";
+  if (/Lead Research/i.test(a)) return "discovery";
+  return null;
 }
 
 // ---- per-campaign prompts. Nothing here touches another campaign, and the shared library is only read. ----

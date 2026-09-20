@@ -17,6 +17,7 @@
 // handoff_note, ...). Each normaliser below also accepts the backend's native fields
 // (qualified/score/action/...) so either style works.
 import { config } from "../../config.js";
+import { dossierFor } from "../dossier.js";
 
 export class DronaHQError extends Error {}
 
@@ -191,16 +192,8 @@ export const campaignBlock = (c) => ({
   approvals: c.approvals,
 });
 
-// Best-effort dossier from what the backend keeps on the prospect (its prior qualification and
-// activity history), in the shared entry shape.
-export function dossierFor(p) {
-  const entries = [];
-  if (p.qual && p.qual.status && p.qual.status !== "Pending") {
-    entries.push({ agent_name: p.qual.agent, harness_version: p.qual.harness, decision: p.qual.status, handoff_note: p.qual.reasoning });
-  }
-  for (const h of p.history || []) entries.push({ agent_name: "activity", decision: h.text });
-  return entries;
-}
+// The whole shared dossier (facts, hand-off notes, qualification, activity): see services/dossier.js.
+export { dossierFor };
 
 export const knowledgePayload = (knowledge) => (knowledge || []).map((k) => ({ label: k.label, text: k.text }));
 

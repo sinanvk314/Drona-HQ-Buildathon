@@ -55,8 +55,12 @@ export function composePrompt(agent, campaign) {
   const version = pinnedVersion(agent, campaign);
   const system = activeSystemPrompt(campaign);
   const override = agent.overrides.find((o) => o.campaignId === campaign.id);
+  const persona = campaign && campaign.persona;
+  const voice = persona && (persona.tone || persona.signOff)
+    ? `Voice: ${[persona.tone && `write ${persona.tone}`, persona.signOff && `sign off as "${persona.signOff}"`].filter(Boolean).join("; ")}.`
+    : "";
   return {
-    text: [system && system.text, version ? version.text : ""].filter(Boolean).join("\n\n"),
+    text: [system && system.text, voice, version ? version.text : ""].filter(Boolean).join("\n\n"),
     harness: `${version ? version.version : "v0"}${system ? ` + campaign prompt v${system.version}` : ""}`,
     override: override ? override.text : null,
   };

@@ -141,6 +141,34 @@ export default function ProspectDetail({ params }) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card" style={CARD}>
+            <div className="section-title">Dossier: the SDR's shared memory</div>
+            {(!p.dossier || (p.dossier.facts.length === 0 && p.dossier.notes.length === 0)) && (
+              <div style={{ fontSize: 13, color: "var(--text-2)" }}>Nothing recorded yet. Each step adds a hand-off note as it acts.</div>
+            )}
+            {p.dossier && p.dossier.facts.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", marginBottom: 6 }}>What is known</div>
+                {p.dossier.facts.map((f, i) => (
+                  <div key={i} style={{ fontSize: 12.5, padding: "3px 0", lineHeight: 1.5 }}>
+                    {f.text} <span style={{ color: "var(--text-3)" }}>· {f.source}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {p.dossier && p.dossier.notes.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", marginBottom: 6 }}>Hand-off notes</div>
+                {p.dossier.notes.map((n, i) => (
+                  <div key={i} style={{ fontSize: 12.5, padding: "5px 0", lineHeight: 1.5, borderTop: i ? "1px solid var(--border)" : "none" }}>
+                    <strong>{n.agent}</strong> <span style={{ color: "var(--text-3)" }}>{n.harness ? `· ${n.harness}` : ""}</span>
+                    <div style={{ color: "var(--text-2)" }}>{n.note}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {p.plan && (
             <div className="card" style={CARD}>
               <div className="section-title">Outreach Plan</div>
