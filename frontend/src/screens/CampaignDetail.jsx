@@ -12,6 +12,7 @@ import { useToast } from "../components/ui/Toast.jsx";
 import { fmt, timeAgo, timeShort } from "../utils/format.js";
 import { eventStyle } from "../utils/eventStyle.js";
 import KnowledgePanel from "../components/campaign/KnowledgePanel.jsx";
+import CampaignPromptsPanel from "../components/campaign/CampaignPromptsPanel.jsx";
 
 const LABEL = { fontSize: 10.5, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.04em" };
 
@@ -175,6 +176,8 @@ export default function CampaignDetail({ params }) {
             ))}
           </div>
         </div>
+
+        <CampaignPromptsPanel campaignId={c.id} prompts={c.prompts} editable={editable} />
 
         <KnowledgePanel campaignId={c.id} sources={c.knowledge} policy={c.approvalPolicy} cadence={c.cadence} />
 

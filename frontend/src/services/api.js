@@ -107,9 +107,12 @@ export const editApproval = (id, patchBody = {}) => patch(`/approvals/${id}`, pa
 
 // ---------------------------------------------------------------- agents & prompts
 export const activatePromptVersion = (agentId, version) => post(`/agents/${agentId}/versions/${encodeURIComponent(version)}/activate`);
+// Per-campaign prompts: which library version a campaign is pinned to, its own system prompt (versioned), and overrides.
+export const setCampaignPin = (id, agentId, version) => post(`/campaigns/${id}/prompts/pins`, { agentId, version });
+export const saveCampaignSystemPrompt = (id, text) => post(`/campaigns/${id}/prompts/system`, { text });
+export const activateCampaignSystemPrompt = (id, version) => post(`/campaigns/${id}/prompts/system/${version}/activate`);
+export const setCampaignOverride = (id, agentId, text) => post(`/campaigns/${id}/prompts/overrides`, { agentId, text });
 export const savePromptVersion = (agentId, text) => post(`/agents/${agentId}/versions`, { text });
-export const requestPromptCompare = (agentId) => post(`/agents/${agentId}/compare`);
-export const requestPromptRollback = (agentId) => post(`/agents/${agentId}/rollback`);
 
 // ---------------------------------------------------------------- global controls
 export const setKillSwitch = (active) => post("/settings/kill-switch", { active });

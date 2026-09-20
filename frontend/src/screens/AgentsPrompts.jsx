@@ -4,15 +4,17 @@ import { Badge, Tag } from "../components/ui/Badge.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useApi } from "../hooks/useApi.js";
-import {
-  activatePromptVersion, getAgent, getAgents, requestPromptCompare, requestPromptRollback, savePromptVersion,
-} from "../services/api.js";
+import { useNav } from "../components/shell/NavContext.jsx";
+import PromptDiff from "../components/campaign/PromptDiff.jsx";
+import { activatePromptVersion, getAgent, getAgents, savePromptVersion } from "../services/api.js";
 import { timeAgo } from "../utils/format.js";
 
 const DOT = { running: "var(--success)", paused: "var(--warning)", stopped: "var(--danger)" };
 
 export default function AgentsPrompts() {
   const toast = useToast();
+  const { navigate } = useNav();
+  const [compare, setCompare] = useState(null);
   const [selectedId, setSelectedId] = useState("personalisation");
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
@@ -31,11 +33,6 @@ export default function AgentsPrompts() {
     } catch (e) {
       toast(e.message, "error");
     }
-  };
-
-  const openStub = async (title, fn) => {
-    const r = await fn();
-    setModal({ title, body: r.message });
   };
 
   return (
@@ -69,10 +66,16 @@ export default function AgentsPrompts() {
 
             <div className="card" style={{ padding: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <div className="section-title" style={{ marginBottom: 0 }}>Active Prompt / Harness</div>
+                <div className="section-title" style={{ marginBottom: 0 }}>Library Default Prompt</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => openStub("Compare versions", requestPromptCompare)}>Compare</button>
-                  <button type="button" className="btn btn-secondary" onClick={() => openStub("Roll back", requestPromptRollback)}>Roll Back</button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={agent.versions.length < 2}
+                    onClick={() => setCompare({ a: agent.versions[1].version, b: agent.versions[0].version })}
+                  >
+                    Compare
+                  </button>
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -84,6 +87,11 @@ export default function AgentsPrompts() {
                     Edit
                   </button>
                 </div>
+              </div>
+              <div className="field-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+                This is the shared library. New campaigns start from the default version; a running campaign stays on the version it is
+                pinned to, so saving a version here never changes how any existing campaign behaves. Move a campaign to a version on the
+                campaign's page.
               </div>
               <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 10 }}>
                 <strong>{agent.active.version}</strong> · Active
@@ -100,10 +108,10 @@ export default function AgentsPrompts() {
                         guard(async () => {
                           await savePromptVersion(agent.id, editText);
                           setEditing(false);
-                        }, "Saved as a new active version")
+                        }, "Saved as a new library version. No running campaign was changed.")
                       }
                     >
-                      Save as New Version
+                      Save as New Library Version
                     </button>
                     <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
                   </div>
@@ -142,11 +150,33 @@ export default function AgentsPrompts() {
                           <button
                             type="button"
                             className="link"
-                            onClick={() => guard(() => activatePromptVersion(agent.id, v.version), `${v.version} is now active`)}
+                            onClick={() => guard(() => activatePromptVersion(agent.id, v.version), `${v.version} is now the library default. No running campaign was changed.`)}
                           >
-                            Activate
+                            Make default
                           </button>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="card">
+              <div style={{ padding: "16px 20px 4px 20px", fontSize: 13.5, fontWeight: 700 }}>Version Used by Each Campaign</div>
+              <table>
+                <thead>
+                  <tr><th>Campaign</th><th>Pinned version</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {agent.campaignPins.map((c) => (
+                    <tr key={c.campaignId}>
+                      <td>{c.campaignName}</td>
+                      <td>
+                        {c.version} {c.version !== agent.active.version && <Tag>not the library default</Tag>}
+                      </td>
+                      <td>
+                        <button type="button" className="link" onClick={() => navigate("campaignDetail", { id: c.campaignId })}>Manage on campaign page →</button>
                       </td>
                     </tr>
                   ))}
@@ -178,6 +208,30 @@ export default function AgentsPrompts() {
           </div>
         )}
       </div>
+
+      {compare && agent && (
+        <Modal
+          title="Compare versions"
+          onClose={() => setCompare(null)}
+          width={700}
+          footer={<button type="button" className="btn btn-secondary" onClick={() => setCompare(null)}>Close</button>}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12, fontSize: 13 }}>
+            <select className="input" aria-label="From version" style={{ width: 130 }} value={compare.a} onChange={(e) => setCompare({ ...compare, a: e.target.value })}>
+              {agent.versions.map((v) => <option key={v.version}>{v.version}</option>)}
+            </select>
+            <span>→</span>
+            <select className="input" aria-label="To version" style={{ width: 130 }} value={compare.b} onChange={(e) => setCompare({ ...compare, b: e.target.value })}>
+              {agent.versions.map((v) => <option key={v.version}>{v.version}</option>)}
+            </select>
+            <span style={{ color: "var(--text-3)", fontSize: 12 }}>green = added, red = removed</span>
+          </div>
+          <PromptDiff
+            from={(agent.versions.find((v) => v.version === compare.a) || {}).text}
+            to={(agent.versions.find((v) => v.version === compare.b) || {}).text}
+          />
+        </Modal>
+      )}
 
       {modal && (
         <Modal

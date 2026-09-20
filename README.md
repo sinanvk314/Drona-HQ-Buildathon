@@ -82,6 +82,13 @@ What that means in the running system:
   time all fail it. An LLM draft gets one rewrite with the problems named; a draft that still fails is never auto-sent, whatever
   the approval level, and goes to the Approvals queue with the issues listed.
 
+**Prompt isolation.** Prompts live in two layers, both versioned and both recorded with who changed what and when. The shared
+**library** holds the agent prompts (Agents & Prompts screen: edit, save a new version, compare two versions side by side, make one
+the default for new campaigns). Each **campaign** is pinned to one library version per agent and has its own **system prompt**
+(versioned, roll-back-able) and per-agent overrides, all managed on the campaign page. Saving a library version never changes a
+running campaign; a campaign changes only when someone changes its own pin, system prompt or override. Every Decision Journal
+entry records the version and the campaign prompt version that produced it.
+
 **Approval levels** (per campaign): *Manual* (every toggled action waits in the Approvals queue), *Assisted*
 (auto-approves at a chosen fit score after you have approved a few of that action yourself) and *Autonomous*.
 An escalated objection always needs a human, at every level.
@@ -342,7 +349,7 @@ as a measured accuracy. A Gemini run uses about 16 requests of real quota.
 - A grounding check on every draft, with auto-send blocked when it fails.
 - Per-campaign knowledge base with add/remove in the UI, semantic retrieval before every decision, and the retrieved sources shown in the Decision Journal.
 - Edit a campaign after creation, and duplicate one into a new Draft to build a variant.
-- Prompt versioning per agent (save, activate an older version), with the active version recorded on each decision.
+- Prompt versioning with per-campaign pinning, a versioned campaign system prompt, side-by-side compare and roll-back, and a change log; the versions in force are recorded on every decision.
 - Approval levels, cross-campaign conflict detection, a global suppression list, cost cap and an efficiency panel.
 - Measurement: tokens, latency and cost per prospect / qualified lead / conversation on the dashboard, and a golden-set evaluation.
 - Failure handling: bad or empty model output, HTTP errors and quota exhaustion fall back to the rule engine without stopping the loop.
@@ -360,5 +367,4 @@ rule engine instead.
 
 **Other limitations**
 - Sign-in is a shared access code plus a display name, not individual accounts or roles. The name is who actions are recorded under.
-- Prompt compare and one-click rollback are stubs (activating an older version works).
 - Working hours, follow-up waits and the daily limit run on a simulated clock (`SIM_MS_PER_HOUR`), because no real sending exists. Set it to `3600000` for real time.
