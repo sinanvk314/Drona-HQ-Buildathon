@@ -1,5 +1,11 @@
 # SDR Matching Service
 
+> **Status: reference code, not used by the running app.** The deployed system is the Node backend in `backend/`.
+> Its reply routing (`backend/src/services/replyRouter.js`) and embedding retrieval (`backend/src/services/rag.js`)
+> are ports of this service's `/classify/reply` and retrieval logic, using the same model. Candidate-company triage and
+> contact matching (`/triage/rank-companies`, `/match/contact`) are not wired in, because prospect discovery is
+> simulated. This folder is kept as the tested reference for sourcing at scale.
+
 The custom, non-DronaHQ layer that handles every *similarity* decision in
 the pipeline — as opposed to every *judgment* decision, which stays inside
 DronaHQ agents. This is a deliberate split:

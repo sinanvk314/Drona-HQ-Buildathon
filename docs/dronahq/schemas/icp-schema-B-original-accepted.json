@@ -1,0 +1,80 @@
+{
+  "type": "object",
+  "title": "ICP Fitment Agent Response",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "required": [
+    "agent_name",
+    "decision",
+    "fit_score",
+    "final_action",
+    "handoff_note"
+  ],
+  "properties": {
+    "score": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 0
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decision": {
+      "enum": [
+        "Qualified",
+        "Rejected",
+        "Escalate"
+      ],
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fit_score": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 0
+    },
+    "qualified": {
+      "type": "boolean"
+    },
+    "reasoning": {
+      "type": "string"
+    },
+    "agent_name": {
+      "type": "string"
+    },
+    "final_action": {
+      "enum": [
+        "advance_to_outreach",
+        "close_prospect",
+        "escalate_to_human"
+      ],
+      "type": "string"
+    },
+    "handoff_note": {
+      "type": "string"
+    },
+    "conflict_check": {
+      "type": "string"
+    },
+    "harness_version": {
+      "type": "string"
+    },
+    "retrieved_knowledge": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "campaign_instruction_excerpt": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

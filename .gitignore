@@ -16,3 +16,6 @@ Thumbs.db
 
 # Screenshots of the DronaHQ UI can show webhook URLs and key fragments
 screenshots/
+
+# Logs
+*.log

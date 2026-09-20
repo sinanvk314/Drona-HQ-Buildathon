@@ -87,10 +87,10 @@ backend/             Node + Express API and the autonomous scheduler
   data/knowledge/      knowledge base documents, per campaign, plus reply-examples.json
   scripts/             try-icp.mjs, try-agents.mjs, gemini-models.mjs
   test/                node:test suites
-matching-service/    Standalone Python/FastAPI service (triage, contact match, reply classify) plus a Python
-                     orchestrator. Not on the demo path; the reply routing and retrieval it prototyped now run
-                     inside the Node backend. Kept as the reference implementation for sourcing at scale.
-docs/                Integration contract, DronaHQ agent schemas
+matching-service/    REFERENCE CODE, not used by the running app. A standalone Python/FastAPI service (triage, contact
+                     match, reply classify) plus a Python orchestrator. Its reply routing and embedding retrieval now
+                     run inside the Node backend; the rest is kept as a tested reference for sourcing at scale.
+docs/dronahq/        The DronaHQ ICP agent's instructions and the response schemas we tried against its webhook
 ```
 
 Detailed per-folder notes and the API table are in [`backend/README.md`](backend/README.md).

@@ -163,7 +163,6 @@ data/
   knowledge/*.txt            Knowledge base documents, referenced per campaign by docId
   knowledge/reply-examples.json  Canonical replies used by the reply router
   state.json                 Generated at runtime — the live datastore (gitignored)
-frontend-integration/api.js  Older copy of the frontend's api.js; frontend/src/services/api.js is the one in use
 ```
 
 ## 6. What this deliberately does not include
