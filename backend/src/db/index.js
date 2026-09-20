@@ -14,6 +14,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { buildSeed, SCHEMA_VERSION } from "./seed.js";
+import { migrate } from "./migrate.js";
 import { config } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,7 @@ export async function initDb() {
     const loaded = await pgAdapter.loadStateFromPg();
     if (loaded) {
       state = loaded;
+      if (migrate(state)) await pgAdapter.saveStateToPg(state);
       console.log(`[db] Loaded state from Postgres: ${state.campaigns.length} campaigns, ${state.prospects.length} prospects.`);
     } else {
       state = buildSeed(Date.now());
@@ -68,6 +70,7 @@ export async function initDb() {
     }
   } else {
     state = loadFromFile() || buildSeed(Date.now());
+    migrate(state);
     persistToFile(); // persist once on boot so a fresh clone always has a state file on disk
   }
 }

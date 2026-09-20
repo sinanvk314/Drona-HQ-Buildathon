@@ -11,6 +11,7 @@ import { generateProspect } from "./prospectGenerator.js";
 import * as engine from "./agentEngine/index.js";
 import { classifyReply } from "./replyRouter.js";
 import { recordAvoided } from "./usage.js";
+import { recordTouch } from "./outreach.js";
 import { shortDate } from "../utils/format.js";
 
 const agentById = (s, id) => s.agents.find((a) => a.id === id);
@@ -186,6 +187,8 @@ async function runPersonalisation(s, campaign) {
       if (!auto.ok) {
         pushApproval(s, {
           type: "first",
+          touchKind: "first",
+          channel: result.channel,
           prospectId: prospect.id,
           campaignId: campaign.id,
           name: prospect.name,
@@ -201,14 +204,7 @@ async function runPersonalisation(s, campaign) {
         prospect.lastAction = "Draft ready, {ago}";
         prospect.nextStep = "Awaiting approval";
       } else {
-        prospect.stage = "contacted";
-        prospect.channel = result.channel[0].toUpperCase() + result.channel.slice(1);
-        prospect.conversation.push({ dir: "out", text: result.body, when: "Today" });
-        prospect.history.push({ kind: "email", text: `Opening ${result.channel} sent — "${result.subject}"`, when: "Today" });
-        prospect.lastAction = `Opening ${result.channel} sent, {ago}`;
-        prospect.nextStep = "Awaiting reply";
-        campaign.funnel.contacted += 1;
-        campaign.outreach[result.channel === "email" ? "emails" : "linkedin"] += 1;
+        recordTouch(s, campaign, prospect, { channel: result.channel, kind: "first", subject: result.subject, body: result.body });
         if (campaign.approvals.firstOutreach) {
           pushDecision(s, {
             kind: "strategy",

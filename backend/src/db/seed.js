@@ -56,6 +56,7 @@ export function buildSeed(now) {
         "Qualify if the company is hiring cloud-cost or platform roles OR has raised in the last 12 months, and the contact is a CTO or VP Engineering. Qualify at 70 or above.",
       dailyLimit: 60,
       workingHours: "9:00 AM – 6:00 PM, prospect local time",
+      cadence: { maxTouches: 3, waitHours: 72 },
       approvals: { firstOutreach: true, meetingTime: false, escalate: true, level: "assisted", autoMinScore: 85, autoAfterApproved: 3 },
       sources: sourcesFor.saas(),
       funnel: { discovered: 1840, researched: 1620, qualified: 780, contacted: 426, engaged: 210, meeting: 18, opportunity: 7 },
@@ -83,6 +84,7 @@ export function buildSeed(now) {
       qualificationPrompt: "Qualify if the entity is RBI-regulated and the contact owns technology or risk decisions. Qualify at 70 or above.",
       dailyLimit: 30,
       workingHours: "10:00 AM – 6:00 PM IST",
+      cadence: { maxTouches: 3, waitHours: 72 },
       approvals: { firstOutreach: true, meetingTime: true, escalate: true, level: "manual", autoMinScore: 85, autoAfterApproved: 3 },
       sources: sourcesFor.bfsi(),
       funnel: { discovered: 980, researched: 860, qualified: 330, contacted: 211, engaged: 96, meeting: 11, opportunity: 4 },
@@ -111,6 +113,7 @@ export function buildSeed(now) {
         "Qualify if company is actively hiring infra/platform roles OR has raised a round in the last 6 months, and the contact's title matches Founder/CEO. Qualify at 70 or above.",
       dailyLimit: 40,
       workingHours: "9:00 AM – 6:00 PM, prospect local time",
+      cadence: { maxTouches: 3, waitHours: 72 },
       approvals: { firstOutreach: true, meetingTime: false, escalate: true, level: "autonomous", autoMinScore: 85, autoAfterApproved: 3 },
       sources: sourcesFor.founders(),
       funnel: { discovered: 640, researched: 560, qualified: 220, contacted: 142, engaged: 79, meeting: 9, opportunity: 3 },
@@ -121,7 +124,7 @@ export function buildSeed(now) {
     },
   ];
 
-  const mk = (o) => ({ linkedin: "", history: [], conversation: [], evidence: [], reasons: [], tech: [], ...o });
+  const mk = (o) => ({ linkedin: "", history: [], conversation: [], evidence: [], reasons: [], tech: [], touches: [], plan: null, nextTouchTs: null, ...o });
 
   const prospects = [
     mk({ id: "p_marcus", campaignId: "c_us_saas", name: "Marcus Lee", title: "CTO", company: "Acme Cloud",
@@ -377,6 +380,12 @@ export function buildSeed(now) {
         V("v3.2", "Priya S.", "Sep 10", "active", "You are the ICP Fitment agent. Score each prospect from 0 to 100 against the campaign ICP using role, company size and buying signals. Qualify at 70 or above, cite the evidence for every score, and reject any prospect that triggers an exclusion criterion.", "Priya S.", days(9)),
         V("v3.1", "Rohit K.", "Aug 30", "archived", "You are the ICP Fitment agent. Score each prospect from 0 to 100 against the campaign ICP. Qualify at 75 or above and list your reasons.", null, null),
       ], overrides: [] },
+    { id: "strategy", listName: "Outreach Strategy", title: "Outreach Strategy Agent", settingsName: "Outreach Strategy Agent",
+      description: "Plans the touch sequence for each qualified prospect: which channels, in what order, and how long to wait between touches.",
+      enabled: true, disabledBy: null, disabledTs: null,
+      versions: [
+        V("v1.0", "JD", "Sep 20", "active", "You are the Outreach Strategy agent. For a qualified prospect, choose which of the campaign's enabled channels to use, in what order, and how long to wait between touches. Never plan a channel that is not enabled for the campaign. Prefer the channel the prospect's role is most likely to answer on; use SMS only as a later touch and voice last. Keep the sequence within the campaign's touch limit.", "JD", days(0)),
+      ], overrides: [] },
     { id: "personalisation", listName: "Personalisation & Outreach Strategy", title: "Personalisation & Outreach Strategy Agent", settingsName: "Personalisation & Outreach Strategy Agent",
       description: "Decides channel and timing, then drafts contextual outreach using retrieved knowledge.",
       enabled: true, disabledBy: null, disabledTs: null,
@@ -398,6 +407,12 @@ export function buildSeed(now) {
         V("v2.0", "Priya S.", "Sep 2", "archived", "You are the Conversation agent. Reply to prospects using retrieved knowledge and escalate objections to a human.", null, null),
       ],
       overrides: [{ campaignId: "c_india_bfsi", text: "Escalate any regulatory or data-residency question to a human.", ts: days(5) }] },
+    { id: "followup", listName: "Follow-up", title: "Follow-up Agent", settingsName: "Follow-up Agent",
+      description: "Follows up with contacted prospects who have not replied, on the next channel in their plan, and stops at the campaign's touch limit.",
+      enabled: true, disabledBy: null, disabledTs: null,
+      versions: [
+        V("v1.0", "JD", "Sep 20", "active", "You are the Follow-up agent. When a contacted prospect has not replied, write a short follow-up for the next channel in their plan. Add one new, relevant fact from the knowledge base; never repeat the previous message, apologise for writing, or pressure the prospect. Never invent details.", "JD", days(0)),
+      ], overrides: [] },
     { id: "voice", listName: "Voice SDR (narrow)", title: "Voice SDR Agent", settingsName: "Voice SDR Agent",
       description: "Handles narrow, scripted voice calls for qualified prospects. Limited to approved call flows.",
       enabled: false, disabledBy: "Priya S.", disabledTs: hrs(2),
@@ -420,8 +435,10 @@ export function buildSeed(now) {
     { id: "x3", contact: "competitorcorp.com", reason: "Competitor domain", added: "Sep 3" },
   ];
 
-  const integrations = ["Claude (Sonnet)", "Gmail API", "Twilio", "Apollo", "DronaHQ Agentic AI", "pgvector (RAG)"].map((name) => ({
-    name, connected: name !== "Gmail API" && name !== "Twilio" && name !== "Apollo", // honest default: only the AI/RAG stack is really wired up out of the box
+  // Honest defaults: only what is actually wired up is shown as connected. DronaHQ agents run through their webhook
+  // adapter, but the webhook does not return the agent's output, so decisions come from Gemini.
+  const integrations = ["Gemini", "Local embeddings (RAG)", "DronaHQ Agentic AI", "Gmail API", "Twilio", "Apollo"].map((name) => ({
+    name, connected: name === "Gemini" || name === "Local embeddings (RAG)",
   }));
 
   return {

@@ -12,6 +12,7 @@ import { shortDate } from "../utils/format.js";
 import { checkConflict } from "./conflict.js";
 import { getUsage } from "./usage.js";
 import { docLength } from "./rag.js";
+import { recordTouch } from "./outreach.js";
 
 function campaignOf(s, id) {
   const c = s.campaigns.find((x) => x.id === id);
@@ -461,7 +462,6 @@ export function duplicateCampaign(id) {
 // ---------------------------------------------------------------- approvals
 
 const OUTCOMES = {
-  first: { last: "Opening email sent, {ago}", next: "Awaiting reply", stage: "contacted", counter: "emails" },
   followup: { last: "Follow-up sent, {ago}", next: "Awaiting reply", counter: "followups" },
   pricing: { last: "Pricing shared, {ago}", next: "Awaiting reply", counter: "followups" },
   meeting: { last: "Meeting booked, {ago}", next: "Prep for call", stage: "meeting", funnel: "meeting" },
@@ -486,16 +486,28 @@ export function decideApproval(id, { action, reason = "" } = {}) {
 
     if (p) {
       if (action === "approve") {
-        const o = OUTCOMES[a.type];
-        // The approved (possibly edited) draft is what actually goes out, so keep it in the conversation.
-        if ((a.type === "first" || a.type === "followup") && a.draft && a.draft.body) {
-          p.conversation.push({ dir: "out", text: a.draft.body, when: "Today" });
+        if (a.type === "first" || a.touchKind === "cadence") {
+          // An outbound touch (opening message or cadence follow-up): recorded in one place so the touch
+          // history, counters, funnel and the next follow-up's clock stay consistent.
+          recordTouch(s, c, p, {
+            channel: a.channel || (c.channels && c.channels[0]) || "email",
+            kind: a.type === "first" ? "first" : "followup",
+            subject: (a.draft && a.draft.subject) || "",
+            body: (a.draft && a.draft.body) || "",
+            ts: now,
+          });
+        } else {
+          const o = OUTCOMES[a.type];
+          // The approved (possibly edited) draft is what actually goes out, so keep it in the conversation.
+          if (a.type === "followup" && a.draft && a.draft.body) {
+            p.conversation.push({ dir: "out", text: a.draft.body, when: "Today", channel: a.channel });
+          }
+          p.lastAction = o.last;
+          p.nextStep = o.next;
+          if (o.stage) p.stage = o.stage;
+          if (c && o.counter) c.outreach[o.counter] += 1;
+          if (c && o.funnel) c.funnel[o.funnel] += 1;
         }
-        p.lastAction = o.last;
-        p.nextStep = o.next;
-        if (o.stage) p.stage = o.stage;
-        if (c && o.counter) c.outreach[o.counter] += 1;
-        if (c && o.funnel) c.funnel[o.funnel] += 1;
       } else {
         p.lastAction = "Action rejected, {ago}";
         p.nextStep = "Needs rework";

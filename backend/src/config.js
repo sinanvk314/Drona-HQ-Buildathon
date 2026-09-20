@@ -63,6 +63,12 @@ export const config = {
   modelSmart: process.env.AGENT_MODEL_SMART || "claude-sonnet-4-5",
   schedulerIntervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 12000,
   schedulerBatchSize: Number(process.env.SCHEDULER_BATCH_SIZE) || 3,
+  // Simulated clock for cadence and working hours. Real sends do not exist yet, and a real 72-hour follow-up wait
+  // cannot be shown in a demo, so one simulated hour lasts this many real milliseconds (3000 = a simulated day is
+  // 72 seconds). Set it to 3600000 for real time. The daily limit and working hours use the same clock.
+  simMsPerHour: Number(process.env.SIM_MS_PER_HOUR) || 3000,
+  // "off" stops the scheduler from holding outreach back for the daily limit, working hours and frequency cap.
+  enforceLimits: (process.env.ENFORCE_LIMITS || "on").toLowerCase() !== "off",
   // Cost control. Every LLM call is counted per day (data/usage.json). Past LLM_DAILY_CALL_CAP the
   // chain skips LLM engines and the rule engine decides, so a demo can never burn the free quota
   // dry. 0 disables the cap.
